@@ -11,6 +11,7 @@ Measurements:
 """
 
 from __future__ import annotations
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -18,6 +19,8 @@ from typing import Any
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 from dotenv import load_dotenv
+
+log = logging.getLogger("tameer.influx")
 
 load_dotenv()
 
@@ -41,7 +44,11 @@ def write_soil_reading(node_id: int, metrics: dict, timestamp: datetime) -> None
     )
     for field, value in metrics.items():
         point = point.field(field, float(value))
-    _write_api.write(bucket=_BUCKET, record=point)
+    try:
+        _write_api.write(bucket=_BUCKET, record=point)
+        log.debug("Wrote soil reading for node %s", node_id)
+    except Exception as exc:
+        log.error("InfluxDB write failed (soil): %s", exc)
 
 
 def write_air_reading(node_id: int, metrics: dict, timestamp: datetime) -> None:
@@ -52,7 +59,11 @@ def write_air_reading(node_id: int, metrics: dict, timestamp: datetime) -> None:
     )
     for field, value in metrics.items():
         point = point.field(field, float(value))
-    _write_api.write(bucket=_BUCKET, record=point)
+    try:
+        _write_api.write(bucket=_BUCKET, record=point)
+        log.debug("Wrote air reading for node %s", node_id)
+    except Exception as exc:
+        log.error("InfluxDB write failed (air): %s", exc)
 
 
 def write_automation_event(
