@@ -49,7 +49,6 @@ class InferenceService:
         self._backbone: VisionBackbone | None = None
         self._fusion: RadishFusionLSTM | None = None
         self._actor_crit: ActorCritic | None = None
-        # per-zone sliding windows: zone_id → deque of tensors/arrays
         self._vision_windows: dict[int, deque] = defaultdict(lambda: deque(maxlen=_WINDOW_SIZE))
         self._sensor_windows: dict[int, deque] = defaultdict(lambda: deque(maxlen=_WINDOW_SIZE))
 
@@ -80,12 +79,12 @@ class InferenceService:
 
     def _image_to_tensor(self, image_bytes: bytes) -> torch.Tensor:
         img = Image.open(BytesIO(image_bytes)).convert("RGB")
-        return _preprocess(img).unsqueeze(0).to(self._device)  # (1, 3, 224, 224)
+        return _preprocess(img).unsqueeze(0).to(self._device)
 
     def classify_image(self, image_bytes: bytes) -> dict:
         tensor = self._image_to_tensor(image_bytes)
         with torch.no_grad():
-            probs = self._backbone(tensor)  # (1, 5)
+            probs = self._backbone(tensor)
         probs_list = probs.squeeze(0).cpu().tolist()
         disease_class = int(probs.argmax().item())
         confidence = float(probs.max().item())
@@ -106,7 +105,7 @@ class InferenceService:
     ) -> dict:
         tensor = self._image_to_tensor(image_bytes)
         with torch.no_grad():
-            probs = self._backbone(tensor)  # (1, 5)
+            probs = self._backbone(tensor)
         probs_list = probs.squeeze(0).cpu().tolist()
         disease_class = int(probs.argmax().item())
         confidence = float(probs.max().item())
@@ -118,22 +117,21 @@ class InferenceService:
         }
 
         sensor_vec = np.array([temp, humidity, soil_moisture], dtype=np.float32)
-        self._vision_windows[zone_id].append(probs.squeeze(0).cpu())  # (5,)
-        self._sensor_windows[zone_id].append(sensor_vec)               # (3,)
+        self._vision_windows[zone_id].append(probs.squeeze(0).cpu())
+        self._sensor_windows[zone_id].append(sensor_vec)
 
         v_list = list(self._vision_windows[zone_id])
         s_list = list(self._sensor_windows[zone_id])
-        # pad to window size if not enough history yet
         while len(v_list) < _WINDOW_SIZE:
             v_list.insert(0, v_list[0])
             s_list.insert(0, s_list[0])
 
-        v = torch.stack(v_list).unsqueeze(0).to(self._device)   # (1, 5, 5)
-        s = torch.tensor(np.array(s_list), dtype=torch.float32).unsqueeze(0).to(self._device)  # (1, 5, 3)
+        v = torch.stack(v_list).unsqueeze(0).to(self._device)
+        s = torch.tensor(np.array(s_list), dtype=torch.float32).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
-            state_vec, _ = self._fusion(v, s)                     # (1, 64)
-            logits = self._actor_crit.actor(state_vec.squeeze(0)) # (4,)
+            state_vec, _ = self._fusion(v, s)
+            logits = self._actor_crit.actor(state_vec.squeeze(0))
             action = int(logits.argmax().item())
 
         return {
