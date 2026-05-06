@@ -1,11 +1,9 @@
-# Tameer — Backend + Simulator
+# Tameer — Backend
 
 ## Project structure
 
 ```
 tameer/
-├── simulator/
-│   └── simulator.py        ← mimics ESP32 nodes publishing to HiveMQ
 ├── backend/
 │   ├── main.py             ← FastAPI entry point
 │   ├── models/
@@ -51,25 +49,7 @@ Open **http://localhost:8000/docs** — full interactive Swagger UI.
 
 ---
 
-## 3. Run the simulator (in a second terminal)
-
-```bash
-# Normal mode — realistic radish readings
-python simulator/simulator.py
-
-# Inject a fault scenario to test automation triggers
-python simulator/simulator.py --scenario drought
-python simulator/simulator.py --scenario overwater
-python simulator/simulator.py --scenario heat
-python simulator/simulator.py --scenario npk_deficient
-
-# Faster publishing for quick testing
-python simulator/simulator.py --interval 3
-```
-
----
-
-## 4. REST API endpoints
+## 3. REST API endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -85,10 +65,10 @@ python simulator/simulator.py --interval 3
 
 ---
 
-## 5. How data flows
+## 4. How data flows
 
 ```
-simulator.py
+ESP32 leader node
   └─ publishes JSON → HiveMQ (smartplant/soilnode1, smartplant/weathernode1)
        └─ mqtt_service.py subscribes
             ├─ validates with Pydantic schemas
@@ -96,21 +76,5 @@ simulator.py
             └─ automation.py evaluates thresholds
                  ├─ logs event to InfluxDB
                  └─ publishes command → HiveMQ (smartplant/commands/<node_id>)
-                      └─ (ESP32 will subscribe here when hardware arrives)
-```
-
----
-
-## 6. Testing the automation engine
-
-Run with the drought scenario and watch the backend log:
-
-```
-python simulator/simulator.py --scenario drought --interval 3
-```
-
-You should see the backend log lines like:
-```
-10:42:15  INFO  tameer.mqtt — ✅ Soil  node=1  moisture=18.3%  pH=6.51  temp=35.1°C
-10:42:15  INFO  tameer.automation — 🤖 AUTOMATION  irrigation_valve → on [a3f1b2c4]  reason: moisture=18.3% < 40.0%
+                      └─ ESP32 leader subscribes and actuates
 ```

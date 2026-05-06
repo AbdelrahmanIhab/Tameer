@@ -26,8 +26,7 @@ This is a senior thesis project at AUC (American University in Cairo).
 - EfficientNetB0 disease detection model trained (99% accuracy, 5 radish classes)
 - Basic dashboard prototype
 
-### ✅ Done (Thesis 2 — software, no hardware yet)
-- Sensor data simulator (`simulator/simulator.py`)
+### ✅ Done (Thesis 2 — software)
 - FastAPI backend (`backend/`)
 - MQTT subscriber + publisher (`backend/services/mqtt_service.py`)
 - InfluxDB reads/writes (`backend/services/influx_service.py`)
@@ -35,12 +34,14 @@ This is a senior thesis project at AUC (American University in Cairo).
 - REST API endpoints for sensors and automation (`backend/routers/`)
 - Pydantic validation models (`backend/models/schemas.py`)
 
+### 🔄 In progress (Thesis 2 — hardware integration)
+- Real ESP32 nodes connected (replacing simulator)
+
 ### ⏳ Not yet started
 - React + Vite PWA dashboard (farmer view + engineer view)
 - Random Forest ML model training (needs real sensor data)
 - EfficientNetB0 inference endpoint integration
-- ESP32 firmware (Arduino/PlatformIO)
-- Full hardware integration
+- ESP32 firmware refinement (Arduino/PlatformIO)
 
 ---
 
@@ -53,8 +54,8 @@ tameer/
 ├── .env                             ← credentials (never commit)
 ├── .gitignore
 ├── requirements.txt
-├── simulator/
-│   └── simulator.py                 ← mimics ESP32 publishing to HiveMQ
+├── scripts/
+│   └── purge_simulator_data.py      ← one-time InfluxDB cleanup (already run)
 └── backend/
     ├── __init__.py
     ├── main.py                      ← FastAPI entry point
@@ -78,7 +79,7 @@ tameer/
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
-| Microcontroller | ESP32 | Not yet integrated — simulator fills in |
+| Microcontroller | ESP32 | Hardware nodes connected and publishing |
 | Local wireless | ESP-NOW | Leader election built and tested in Thesis 1 |
 | Cloud messaging | MQTT / HiveMQ Cloud | TLS on port 8883 |
 | Backend | FastAPI + Python | Deployed on Railway in production |
@@ -98,8 +99,6 @@ Key env variable names (must match exactly):
 ```
 MQTT_BROKER
 MQTT_PORT                  (8883 for HiveMQ Cloud TLS)
-MQTT_USERNAME_ESP32        (used by simulator — mimics the ESP32)
-MQTT_PASSWORD_ESP32
 MQTT_USERNAME_BACKEND      (used by FastAPI backend)
 MQTT_PASSWORD_BACKEND
 INFLUXDB_URL
@@ -117,11 +116,10 @@ DEBUG
 
 | Topic | Direction | Publisher | Subscriber |
 |-------|-----------|-----------|------------|
-| `smartplant/soilnode1` | ESP32 → cloud | ESP32 leader / simulator | FastAPI backend |
-| `smartplant/weathernode1` | ESP32 → cloud | ESP32 leader / simulator | FastAPI backend |
+| `smartplant/soilnode1` | ESP32 → cloud | ESP32 leader | FastAPI backend |
+| `smartplant/weathernode1` | ESP32 → cloud | ESP32 leader | FastAPI backend |
 | `smartplant/commands/<node_id>` | cloud → ESP32 | FastAPI backend | ESP32 leader |
 
-The simulator uses `MQTT_USERNAME_ESP32` credentials.
 The backend uses `MQTT_USERNAME_BACKEND` credentials.
 
 ---
@@ -161,16 +159,8 @@ The backend uses `MQTT_USERNAME_BACKEND` credentials.
 # Install dependencies (inside venv)
 pip install -r requirements.txt
 
-# Terminal 1 — start the backend
+# Start the backend
 uvicorn backend.main:app --reload
-
-# Terminal 2 — start the simulator
-python simulator/simulator.py                      # normal mode
-python simulator/simulator.py --scenario drought   # triggers irrigation
-python simulator/simulator.py --scenario overwater # locks irrigation
-python simulator/simulator.py --scenario heat      # triggers fan
-python simulator/simulator.py --scenario npk_deficient  # triggers fertilizer pump
-python simulator/simulator.py --interval 3         # faster publishing
 
 # API docs (once backend is running)
 open http://localhost:8000/docs

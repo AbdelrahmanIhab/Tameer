@@ -2,7 +2,7 @@
 Tameer — Data Models & Validation
 ==================================
 Pydantic models that mirror the exact JSON payloads published by the
-ESP32 leader node (or the simulator). Invalid / out-of-range readings
+ESP32 leader node. Invalid / out-of-range readings
 are rejected before they ever reach InfluxDB.
 """
 
