@@ -66,7 +66,7 @@ class InferenceService:
         log.info("Loading PPO agent from %s", ppo_path)
         self._fusion = RadishFusionLSTM().to(self._device)
         self._actor_crit = ActorCritic().to(self._device)
-        checkpoint = torch.load(ppo_path, map_location=self._device, weights_only=True)
+        checkpoint = torch.load(ppo_path, map_location=self._device, weights_only=False)
         self._fusion.load_state_dict(checkpoint["fusion"])
         self._actor_crit.load_state_dict(checkpoint["actor_crit"])
         self._fusion.eval()
