@@ -17,7 +17,7 @@ class VisionBackbone(nn.Module):
         super().__init__()
         self.net = efficientnet_b0(weights=None)
         self.net.classifier[1] = nn.Linear(self.net.classifier[1].in_features, 5)
-        self.net.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
+        self.net.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=False))
         for param in self.net.parameters():
             param.requires_grad = False
         self.net.eval()
