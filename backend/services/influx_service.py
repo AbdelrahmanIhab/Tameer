@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
@@ -31,6 +32,8 @@ _URL    = os.getenv("INFLUXDB_URL",    "http://localhost:8086")
 _TOKEN  = os.getenv("INFLUXDB_TOKEN", "")
 _ORG    = os.getenv("INFLUXDB_ORG",   "Tameer")
 _BUCKET = os.getenv("INFLUXDB_BUCKET","tameer")
+
+_CAIRO = ZoneInfo("Africa/Cairo")
 
 _client    = InfluxDBClient(url=_URL, token=_TOKEN, org=_ORG)
 _write_api = _client.write_api(write_options=SYNCHRONOUS)
@@ -94,7 +97,7 @@ def write_automation_event(
     trigger_reason: str,
     timestamp: datetime | None = None,
 ) -> None:
-    ts = timestamp or datetime.now(timezone.utc)
+    ts = timestamp or datetime.now(_CAIRO)
     point = (
         Point("automation_events")
         .tag("zone_id",  str(zone_id))
@@ -116,7 +119,7 @@ def write_irrigation_reading(
     minutes: float,
     timestamp: datetime | None = None,
 ) -> None:
-    ts = timestamp or datetime.now(timezone.utc)
+    ts = timestamp or datetime.now(_CAIRO)
     point = (
         Point("irrigation")
         .tag("zone_id",       str(zone_id))
@@ -140,7 +143,7 @@ def write_camera_data(
     confidence: float | None = None,
     timestamp: datetime | None = None,
 ) -> None:
-    ts = timestamp or datetime.now(timezone.utc)
+    ts = timestamp or datetime.now(_CAIRO)
     point = (
         Point("camera_data")
         .tag("zone_id",       str(zone_id))
@@ -279,9 +282,13 @@ from(bucket: "{_BUCKET}")
 
 
 def _run_query(flux: str) -> list[dict]:
-    tables = _query_api.query(flux, org=_ORG)
-    rows = []
-    for table in tables:
-        for record in table.records:
-            rows.append(record.values)
-    return rows
+    try:
+        tables = _query_api.query(flux, org=_ORG)
+        rows = []
+        for table in tables:
+            for record in table.records:
+                rows.append(record.values)
+        return rows
+    except Exception as exc:
+        log.error("InfluxDB query failed: %s", exc)
+        return []
