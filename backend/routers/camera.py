@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
+from backend.ml.inference_service import inference_service
 from backend.services import influx_service
 
 load_dotenv()
@@ -53,19 +54,36 @@ async def upload_image(zone_id: int, instance: int, image: UploadFile = File(...
             resource_type="image",
         )
         image_url = result.get("secure_url", "")
+
+        health_status = None
+        confidence = None
+        if inference_service.ready:
+            try:
+                prediction = inference_service.classify_image(contents)
+                health_status = prediction["disease_name"]
+                confidence = prediction["confidence"]
+            except Exception as exc:
+                pass
+
         influx_service.write_camera_data(
             zone_id=zone_id,
             cam_instance=instance,
             image_url=image_url,
+            health_status=health_status,
+            confidence=confidence,
             timestamp=ts,
         )
-        return {
+        response = {
             "status":    "received",
             "zone_id":   zone_id,
             "instance":  instance,
             "image_url": image_url,
             "timestamp": str(ts),
         }
+        if health_status is not None:
+            response["health_status"] = health_status
+            response["confidence"] = confidence
+        return response
     except Exception as exc:
         return {
             "status":   "received_locally",

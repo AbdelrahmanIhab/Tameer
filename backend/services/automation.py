@@ -126,6 +126,52 @@ def evaluate_weather(
     return commands
 
 
+def evaluate_ppo_action(
+    action: int,
+    action_name: str,
+    disease_name: str,
+    confidence: float,
+    zone_id: int,
+    already_irrigating: bool,
+    moisture: float,
+    publish_fn: Callable[[dict], None],
+    write_event_fn: Callable[..., None],
+    trace_id: str = "",
+) -> list[dict]:
+    """
+    Translates a PPO action into actuator commands.
+    Skips irrigation if the threshold engine already triggered it.
+    Adds fungicide/pesticide commands that the threshold engine never produces.
+    """
+    commands = []
+    reason = f"PPO {confidence:.0%} conf [{disease_name}] → {action_name}"
+
+    if action == 0:
+        log.info("🤖 PPO  zone=%d  → Do nothing  [%s  %.0f%%]", zone_id, disease_name, confidence * 100)
+
+    elif action == 1:  # irrigate
+        if not already_irrigating:
+            minutes = compute_irrigation_minutes(moisture=moisture)
+            cmd = _make_command(zone_id, "irrigation_valve", "irrigate", reason)
+            cmd["minutes"] = minutes
+            _fire(cmd, publish_fn, write_event_fn, trace_id)
+            commands.append(cmd)
+        else:
+            log.info("🤖 PPO  zone=%d  → Irrigate [skipped — threshold already triggered]", zone_id)
+
+    elif action == 2:  # fungicide
+        cmd = _make_command(zone_id, "fungicide_system", "apply", reason)
+        _fire(cmd, publish_fn, write_event_fn, trace_id)
+        commands.append(cmd)
+
+    elif action == 3:  # pesticide
+        cmd = _make_command(zone_id, "pesticide_system", "apply", reason)
+        _fire(cmd, publish_fn, write_event_fn, trace_id)
+        commands.append(cmd)
+
+    return commands
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_command(zone_id: int, actuator: str, action: str, reason: str) -> dict:

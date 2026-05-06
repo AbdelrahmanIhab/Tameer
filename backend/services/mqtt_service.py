@@ -21,6 +21,7 @@ import paho.mqtt.client as mqtt
 from pydantic import ValidationError
 from dotenv import load_dotenv
 
+from backend.ml.inference_service import inference_service
 from backend.models.schemas import ZonePayload, SoilMetrics, AirMetrics
 from backend.services import influx_service, automation, debug_bus
 
@@ -129,13 +130,15 @@ def _handle_soil(node, zone_id: int, ts: datetime, trace_id: str = "") -> None:
     log.info("✅ Soil  zone=%d inst=%d  moisture=%.1f%%  temp=%.1f°C",
              zone_id, node.instance, metrics.moisture, metrics.soil_temp)
 
-    automation.evaluate_soil(
+    soil_cmds = automation.evaluate_soil(
         metrics=m,
         zone_id=zone_id,
         publish_fn=publish_command,
         write_event_fn=influx_service.write_automation_event,
         trace_id=trace_id,
     )
+
+    _run_ppo(zone_id, m, soil_cmds, trace_id)
 
     irr_minutes = automation.compute_irrigation_minutes(
         moisture=m["moisture"],
@@ -191,6 +194,42 @@ def _handle_weather(node, zone_id: int, ts: datetime, trace_id: str = "") -> Non
         write_event_fn=influx_service.write_automation_event,
         trace_id=trace_id,
     )
+
+
+# ── PPO inference helper ──────────────────────────────────────────────────────
+
+def _run_ppo(zone_id: int, soil_metrics: dict, soil_cmds: list, trace_id: str) -> None:
+    if not inference_service.ready:
+        return
+    img_path = f"latest_zone{zone_id}_cam1.jpg"
+    if not os.path.exists(img_path):
+        log.debug("PPO skipped zone=%d — no camera image on disk yet", zone_id)
+        return
+    try:
+        with open(img_path, "rb") as f:
+            img_bytes = f.read()
+        result = inference_service.recommend_action(
+            zone_id=zone_id,
+            image_bytes=img_bytes,
+            temp=_weather_cache.get("air_temp", 25.0),
+            humidity=_weather_cache.get("air_humidity", 50.0),
+            soil_moisture=soil_metrics["moisture"],
+        )
+        already_irrigating = any(c.get("actuator") == "irrigation_valve" for c in soil_cmds)
+        automation.evaluate_ppo_action(
+            action=result["action"],
+            action_name=result["action_name"],
+            disease_name=result["disease_prediction"]["disease_name"],
+            confidence=result["disease_prediction"]["confidence"],
+            zone_id=zone_id,
+            already_irrigating=already_irrigating,
+            moisture=soil_metrics["moisture"],
+            publish_fn=publish_command,
+            write_event_fn=influx_service.write_automation_event,
+            trace_id=trace_id,
+        )
+    except Exception as exc:
+        log.warning("PPO inference failed zone=%d: %s", zone_id, exc)
 
 
 # ── Connection callbacks ──────────────────────────────────────────────────────

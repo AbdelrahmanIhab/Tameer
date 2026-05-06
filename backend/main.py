@@ -19,7 +19,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import automation, camera, debug, sensors
+from backend.ml.inference_service import inference_service
+from backend.routers import automation, camera, debug, inference, sensors
 from backend.services import mqtt_service
 
 load_dotenv()
@@ -34,6 +35,7 @@ logging.basicConfig(
 # ── Lifespan (startup / shutdown) ─────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    inference_service.load()
     mqtt_service.start()
     yield
     mqtt_service.stop()
@@ -61,6 +63,7 @@ app.add_middleware(
 app.include_router(sensors.router)
 app.include_router(automation.router)
 app.include_router(camera.router)
+app.include_router(inference.router)
 app.include_router(debug.router)
 
 
