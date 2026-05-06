@@ -4,10 +4,13 @@ Tameer — InfluxDB Service
 All reads and writes to InfluxDB Cloud go through this module.
 
 Measurements:
-  soil_readings    — per soil node, per timestamp
-  air_readings     — per weather node, per timestamp
+  soil_readings     — per zone / per soil node instance
+  air_readings      — per zone / per weather node instance
   automation_events — every actuator command with reason
-  plant_health     — ML inference results (Phase 4)
+  irrigation        — computed irrigation minutes per zone
+  camera_data       — image URLs per zone / per camera instance
+
+Tags on every measurement: zone_id, node_type, node_instance
 """
 
 from __future__ import annotations
@@ -36,46 +39,56 @@ _query_api = _client.query_api()
 
 # ── Writes ────────────────────────────────────────────────────────────────────
 
-def write_soil_reading(node_id: int, metrics: dict, timestamp: datetime) -> None:
+def write_soil_reading(
+    zone_id: int,
+    node_instance: int,
+    metrics: dict,
+    timestamp: datetime,
+) -> None:
+    moisture = metrics.get("moisture", 50.0)
+    dryness  = "wet" if moisture >= 70 else ("moderate" if moisture >= 40 else "dry")
+
     point = (
         Point("soil_readings")
-        .tag("node_id", str(node_id))
+        .tag("zone_id",       str(zone_id))
+        .tag("node_type",     "soil")
+        .tag("node_instance", str(node_instance))
+        .field("dryness_level", dryness)
         .time(timestamp, WritePrecision.S)
     )
     for field, value in metrics.items():
         point = point.field(field, float(value))
-    moisture = metrics.get("moisture", 50.0)
-    if moisture >= 70:
-        dryness = "wet"
-    elif moisture >= 40:
-        dryness = "moderate"
-    else:
-        dryness = "dry"
-    point = point.field("dryness_level", dryness)
     try:
         _write_api.write(bucket=_BUCKET, record=point)
-        log.debug("Wrote soil reading for node %s", node_id)
+        log.debug("Wrote soil_readings zone=%s instance=%s", zone_id, node_instance)
     except Exception as exc:
         log.error("InfluxDB write failed (soil): %s", exc)
 
 
-def write_air_reading(node_id: int, metrics: dict, timestamp: datetime) -> None:
+def write_air_reading(
+    zone_id: int,
+    node_instance: int,
+    metrics: dict,
+    timestamp: datetime,
+) -> None:
     point = (
         Point("air_readings")
-        .tag("node_id", str(node_id))
+        .tag("zone_id",       str(zone_id))
+        .tag("node_type",     "weather")
+        .tag("node_instance", str(node_instance))
         .time(timestamp, WritePrecision.S)
     )
     for field, value in metrics.items():
         point = point.field(field, float(value))
     try:
         _write_api.write(bucket=_BUCKET, record=point)
-        log.debug("Wrote air reading for node %s", node_id)
+        log.debug("Wrote air_readings zone=%s instance=%s", zone_id, node_instance)
     except Exception as exc:
         log.error("InfluxDB write failed (air): %s", exc)
 
 
 def write_automation_event(
-    node_id: int,
+    zone_id: int,
     actuator: str,
     action: str,
     trigger_reason: str,
@@ -84,54 +97,104 @@ def write_automation_event(
     ts = timestamp or datetime.now(timezone.utc)
     point = (
         Point("automation_events")
-        .tag("node_id",  str(node_id))
+        .tag("zone_id",  str(zone_id))
         .tag("actuator", actuator)
         .tag("action",   action)
         .field("trigger_reason", trigger_reason)
-        .field("dummy", 1)          # InfluxDB requires ≥1 field
+        .field("dummy", 1)
         .time(ts, WritePrecision.S)
     )
-    _write_api.write(bucket=_BUCKET, record=point)
+    try:
+        _write_api.write(bucket=_BUCKET, record=point)
+    except Exception as exc:
+        log.error("InfluxDB write failed (automation_event): %s", exc)
+
+
+def write_irrigation_reading(
+    zone_id: int,
+    node_instance: int,
+    minutes: float,
+    timestamp: datetime | None = None,
+) -> None:
+    ts = timestamp or datetime.now(timezone.utc)
+    point = (
+        Point("irrigation")
+        .tag("zone_id",       str(zone_id))
+        .tag("node_type",     "soil")
+        .tag("node_instance", str(node_instance))
+        .field("irrigation_minutes", float(minutes))
+        .time(ts, WritePrecision.S)
+    )
+    try:
+        _write_api.write(bucket=_BUCKET, record=point)
+        log.debug("Wrote irrigation zone=%s instance=%s: %.1f min", zone_id, node_instance, minutes)
+    except Exception as exc:
+        log.error("InfluxDB write failed (irrigation): %s", exc)
+
+
+def write_camera_data(
+    zone_id: int,
+    cam_instance: int,
+    image_url: str,
+    health_status: str | None = None,
+    confidence: float | None = None,
+    timestamp: datetime | None = None,
+) -> None:
+    ts = timestamp or datetime.now(timezone.utc)
+    point = (
+        Point("camera_data")
+        .tag("zone_id",       str(zone_id))
+        .tag("node_type",     "camera")
+        .tag("node_instance", str(cam_instance))
+        .field("image_url", image_url)
+        .time(ts, WritePrecision.S)
+    )
+    if health_status is not None:
+        point = point.field("health_status", health_status)
+    if confidence is not None:
+        point = point.field("confidence", float(confidence))
+    try:
+        _write_api.write(bucket=_BUCKET, record=point)
+        log.debug("Wrote camera_data zone=%s instance=%s", zone_id, cam_instance)
+    except Exception as exc:
+        log.error("InfluxDB write failed (camera): %s", exc)
 
 
 # ── Reads ─────────────────────────────────────────────────────────────────────
 
-def query_latest_soil(node_id: int | None = None) -> list[dict]:
-    """Return the most recent soil reading per node."""
-    filter_clause = f'|> filter(fn: (r) => r["node_id"] == "{node_id}")' if node_id else ""
+def query_latest_soil(zone_id: int | None = None) -> list[dict]:
+    filter_clause = f'|> filter(fn: (r) => r["zone_id"] == "{zone_id}")' if zone_id is not None else ""
     flux = f"""
 from(bucket: "{_BUCKET}")
   |> range(start: -1h)
   |> filter(fn: (r) => r["_measurement"] == "soil_readings")
   {filter_clause}
   |> last()
-  |> pivot(rowKey:["_time","node_id"], columnKey: ["_field"], valueColumn: "_value")
+  |> pivot(rowKey:["_time","zone_id","node_instance"], columnKey: ["_field"], valueColumn: "_value")
 """
     return _run_query(flux)
 
 
-def query_latest_air(node_id: int | None = None) -> list[dict]:
-    """Return the most recent air reading per node."""
-    filter_clause = f'|> filter(fn: (r) => r["node_id"] == "{node_id}")' if node_id else ""
+def query_latest_air(zone_id: int | None = None) -> list[dict]:
+    filter_clause = f'|> filter(fn: (r) => r["zone_id"] == "{zone_id}")' if zone_id is not None else ""
     flux = f"""
 from(bucket: "{_BUCKET}")
   |> range(start: -1h)
   |> filter(fn: (r) => r["_measurement"] == "air_readings")
   {filter_clause}
   |> last()
-  |> pivot(rowKey:["_time","node_id"], columnKey: ["_field"], valueColumn: "_value")
+  |> pivot(rowKey:["_time","zone_id","node_instance"], columnKey: ["_field"], valueColumn: "_value")
 """
     return _run_query(flux)
 
 
-def query_history(measurement: str, node_id: int, hours: int = 24) -> list[dict]:
-    """Return time-series history for a measurement + node."""
+def query_history(measurement: str, zone_id: int, hours: int = 24) -> list[dict]:
     flux = f"""
 from(bucket: "{_BUCKET}")
   |> range(start: -{hours}h)
   |> filter(fn: (r) => r["_measurement"] == "{measurement}")
-  |> filter(fn: (r) => r["node_id"] == "{node_id}")
-  |> pivot(rowKey:["_time","node_id"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r["zone_id"] == "{zone_id}")
+  |> pivot(rowKey:["_time","zone_id","node_instance"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"])
 """
     return _run_query(flux)
@@ -142,113 +205,55 @@ def query_automation_events(hours: int = 24) -> list[dict]:
 from(bucket: "{_BUCKET}")
   |> range(start: -{hours}h)
   |> filter(fn: (r) => r["_measurement"] == "automation_events")
-  |> pivot(rowKey:["_time","node_id","actuator","action"],
+  |> pivot(rowKey:["_time","zone_id","actuator","action"],
            columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"], desc: true)
 """
     return _run_query(flux)
 
 
-def write_camera_data(
-    image_url: str,
-    health_status: str | None = None,
-    confidence: float | None = None,
-    location: str | None = None,
-    timestamp: datetime | None = None,
-) -> None:
-    ts = timestamp or datetime.now(timezone.utc)
-    point = (
-        Point("camera_data")
-        .tag("node_type", "camera")
-        .field("image_url", image_url)
-        .time(ts, WritePrecision.S)
-    )
-    if location is not None:
-        point = point.tag("location", location)
-    if health_status is not None:
-        point = point.field("health_status", health_status)
-    if confidence is not None:
-        point = point.field("confidence", float(confidence))
-    try:
-        _write_api.write(bucket=_BUCKET, record=point)
-        log.debug("Wrote camera_data: %s", image_url)
-    except Exception as exc:
-        log.error("InfluxDB write failed (camera): %s", exc)
-
-
-def write_irrigation_reading(
-    node_id: int,
-    minutes: float,
-    location: str | None = None,
-    timestamp: datetime | None = None,
-) -> None:
-    ts = timestamp or datetime.now(timezone.utc)
-    point = (
-        Point("irrigation")
-        .tag("node_id", str(node_id))
-        .field("irrigation_minutes", float(minutes))
-        .time(ts, WritePrecision.S)
-    )
-    if location is not None:
-        point = point.tag("location", location)
-    try:
-        _write_api.write(bucket=_BUCKET, record=point)
-        log.debug("Wrote irrigation reading for node %s: %.1f min", node_id, minutes)
-    except Exception as exc:
-        log.error("InfluxDB write failed (irrigation): %s", exc)
-
-
-def query_latest_irrigation(node_id: int | None = None) -> list[dict]:
-    """Return the most recent irrigation recommendation per node."""
-    filter_clause = f'|> filter(fn: (r) => r["node_id"] == "{node_id}")' if node_id else ""
+def query_latest_irrigation(zone_id: int | None = None) -> list[dict]:
+    filter_clause = f'|> filter(fn: (r) => r["zone_id"] == "{zone_id}")' if zone_id is not None else ""
     flux = f"""
 from(bucket: "{_BUCKET}")
   |> range(start: -1h)
   |> filter(fn: (r) => r["_measurement"] == "irrigation")
   {filter_clause}
   |> last()
-  |> pivot(rowKey:["_time","node_id"], columnKey: ["_field"], valueColumn: "_value")
+  |> pivot(rowKey:["_time","zone_id","node_instance"], columnKey: ["_field"], valueColumn: "_value")
 """
     return _run_query(flux)
 
 
-def query_latest_all(node_id: int | None = None) -> dict:
-    """Return the latest soil, air, camera, and irrigation readings in one call."""
-    soil_rows = query_latest_soil(node_id=node_id)
-    air_rows = query_latest_air()
+def query_latest_all(zone_id: int | None = None) -> dict:
+    soil_rows = query_latest_soil(zone_id=zone_id)
+    air_rows  = query_latest_air()
 
-    node_filter = f'|> filter(fn: (r) => r["node_id"] == "{node_id}")' if node_id else ""
+    zone_filter = f'|> filter(fn: (r) => r["zone_id"] == "{zone_id}")' if zone_id is not None else ""
     camera_flux = f"""
 from(bucket: "{_BUCKET}")
   |> range(start: -24h)
   |> filter(fn: (r) => r["_measurement"] == "camera_data")
+  {zone_filter}
   |> last()
-  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> pivot(rowKey:["_time","zone_id","node_instance"], columnKey: ["_field"], valueColumn: "_value")
 """
     camera_rows = _run_query(camera_flux)
-
-    irr_rows = query_latest_irrigation(node_id=node_id)
-
-    timestamp = None
-    if soil_rows:
-        timestamp = str(soil_rows[0].get("_time", ""))
+    irr_rows    = query_latest_irrigation(zone_id=zone_id)
 
     camera = camera_rows[0] if camera_rows else {}
-    irrigation_minutes = irr_rows[0].get("irrigation_minutes") if irr_rows else None
-
     return {
-        "timestamp": timestamp,
-        "soil": soil_rows[0] if soil_rows else None,
-        "weather": air_rows[0] if air_rows else None,
-        "image_url": camera.get("image_url"),
-        "health_status": camera.get("health_status"),
-        "confidence": camera.get("confidence"),
-        "irrigation_minutes": irrigation_minutes,
+        "timestamp":          str(soil_rows[0].get("_time", "")) if soil_rows else None,
+        "soil":               soil_rows[0] if soil_rows else None,
+        "weather":            air_rows[0]  if air_rows  else None,
+        "image_url":          camera.get("image_url"),
+        "health_status":      camera.get("health_status"),
+        "confidence":         camera.get("confidence"),
+        "irrigation_minutes": irr_rows[0].get("irrigation_minutes") if irr_rows else None,
     }
 
 
 def query_debug_records(limit: int = 20) -> list[dict]:
-    """Return the last N raw records across sensor and camera measurements."""
     flux = f"""
 from(bucket: "{_BUCKET}")
   |> range(start: -24h)
@@ -264,11 +269,11 @@ from(bucket: "{_BUCKET}")
         for record in table.records:
             rows.append({
                 "measurement": record.get_measurement(),
-                "time": str(record.get_time()),
-                "field": record.get_field(),
-                "value": record.get_value(),
-                "tags": {k: v for k, v in record.values.items()
-                         if k not in ("_start", "_stop", "_time", "_value", "_field", "_measurement")},
+                "time":        str(record.get_time()),
+                "field":       record.get_field(),
+                "value":       record.get_value(),
+                "tags":        {k: v for k, v in record.values.items()
+                                if k not in ("_start", "_stop", "_time", "_value", "_field", "_measurement")},
             })
     return rows
 

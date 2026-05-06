@@ -1,11 +1,11 @@
 """
 Tameer — MQTT Service
 ======================
-• Subscribes to smartplant/# on HiveMQ Cloud
-• Parses and validates every incoming payload (Pydantic)
-• Writes clean readings to InfluxDB
-• Passes metrics to the automation engine
-• Publishes actuator commands back on smartplant/commands/<node_id>
+• Subscribes to smartplant/zone/+/data on HiveMQ Cloud
+• Parses the zone aggregate payload (ZonePayload)
+• Fans out each node reading to InfluxDB
+• Runs the automation engine per soil and weather reading
+• Publishes actuator commands to smartplant/zone/{zone_id}/actuator/cmd
 """
 
 from __future__ import annotations
@@ -13,13 +13,13 @@ import json
 import logging
 import os
 import ssl
-from datetime import timezone
+from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
 from dotenv import load_dotenv
 
-from backend.models.schemas import SoilPayload, WeatherPayload
+from backend.models.schemas import ZonePayload, SoilMetrics, AirMetrics
 from backend.services import influx_service, automation
 
 load_dotenv()
@@ -31,12 +31,12 @@ PORT     = int(os.getenv("MQTT_PORT",         "1883"))
 USERNAME = os.getenv("MQTT_USERNAME_BACKEND", "")
 PASSWORD = os.getenv("MQTT_PASSWORD_BACKEND", "")
 
-SUBSCRIBE_TOPIC  = "smartplant/#"
-COMMAND_TOPIC    = "smartplant/commands/{node_id}"
+SUBSCRIBE_TOPIC = "smartplant/zone/+/data"
+COMMAND_TOPIC   = "smartplant/zone/{zone_id}/actuator/cmd"
 
 _mqtt_client: mqtt.Client | None = None
 
-# Latest weather metrics cached in memory so irrigation can use them without a DB round-trip
+# Latest weather metrics cached in memory for irrigation ET adjustment
 _weather_cache: dict = {}
 
 
@@ -45,7 +45,7 @@ def publish_command(cmd: dict) -> None:
     if _mqtt_client is None:
         log.warning("MQTT client not ready — command not sent: %s", cmd)
         return
-    topic = COMMAND_TOPIC.format(node_id=cmd["target_node"])
+    topic = COMMAND_TOPIC.format(zone_id=cmd["zone_id"])
     _mqtt_client.publish(topic, json.dumps(cmd), qos=1)
     log.debug("Published command → %s : %s", topic, cmd)
 
@@ -59,85 +59,77 @@ def _on_message(client, userdata, msg: mqtt.MQTTMessage) -> None:
         log.warning("Non-JSON payload on %s — ignored", topic)
         return
 
-    node_type = raw.get("node_type")
-
-    if node_type == "soil":
-        _handle_soil(raw)
-    elif node_type == "weather":
-        _handle_weather(raw)
-    else:
-        log.debug("Unknown node_type '%s' on %s — skipped", node_type, topic)
-
-
-def _handle_soil(raw: dict) -> None:
-    try:
-        payload = SoilPayload(**raw)
-    except ValidationError as exc:
-        log.warning("Soil payload validation failed:\n%s", exc)
+    # Skip our own command and ack topics echoed back
+    if "actuator" in topic:
         return
 
-    ts = payload.timestamp.replace(tzinfo=timezone.utc) if payload.timestamp.tzinfo is None \
-        else payload.timestamp
+    try:
+        payload = ZonePayload(**raw)
+    except ValidationError as exc:
+        log.warning("ZonePayload validation failed on %s:\n%s", topic, exc)
+        return
 
-    metrics = payload.metrics.model_dump()
+    ts = datetime.now(timezone.utc)
+    zone_id = payload.zone_id
+
+    for node in payload.nodes:
+        if node.node_type == "soil":
+            _handle_soil(node, zone_id, ts)
+        elif node.node_type == "weather":
+            _handle_weather(node, zone_id, ts)
+
+
+def _handle_soil(node, zone_id: int, ts: datetime) -> None:
+    metrics: SoilMetrics = node.metrics
+    m = metrics.model_dump()
+
     influx_service.write_soil_reading(
-        node_id=payload.node_id,
-        metrics=metrics,
+        zone_id=zone_id,
+        node_instance=node.instance,
+        metrics=m,
         timestamp=ts,
     )
-    log.info("✅ Soil  node=%d  moisture=%.1f%%  pH=%.2f  temp=%.1f°C",
-             payload.node_id,
-             payload.metrics.moisture,
-             payload.metrics.ph,
-             payload.metrics.soil_temp)
+    log.info("✅ Soil  zone=%d inst=%d  moisture=%.1f%%  temp=%.1f°C",
+             zone_id, node.instance, metrics.moisture, metrics.soil_temp)
 
     automation.evaluate_soil(
-        metrics=metrics,
-        node_id=payload.node_id,
+        metrics=m,
+        zone_id=zone_id,
         publish_fn=publish_command,
         write_event_fn=influx_service.write_automation_event,
     )
 
     irr_minutes = automation.compute_irrigation_minutes(
-        moisture=metrics["moisture"],
-        air_temp=_weather_cache.get("air_temp", 25.0),
+        moisture=m["moisture"],
+        air_temp=_weather_cache.get("air_temp",    25.0),
         humidity=_weather_cache.get("air_humidity", 50.0),
-        light=_weather_cache.get("light", 500.0),
+        light=_weather_cache.get("light",           50.0),
     )
     influx_service.write_irrigation_reading(
-        node_id=payload.node_id,
+        zone_id=zone_id,
+        node_instance=node.instance,
         minutes=irr_minutes,
         timestamp=ts,
     )
 
 
-def _handle_weather(raw: dict) -> None:
-    try:
-        payload = WeatherPayload(**raw)
-    except ValidationError as exc:
-        log.warning("Weather payload validation failed:\n%s", exc)
-        return
-
-    ts = payload.timestamp.replace(tzinfo=timezone.utc) if payload.timestamp.tzinfo is None \
-        else payload.timestamp
-
-    air_metrics = payload.metrics.model_dump()
-    _weather_cache.update(air_metrics)
+def _handle_weather(node, zone_id: int, ts: datetime) -> None:
+    metrics: AirMetrics = node.metrics
+    m = metrics.model_dump()
+    _weather_cache.update(m)
 
     influx_service.write_air_reading(
-        node_id=payload.node_id,
-        metrics=air_metrics,
+        zone_id=zone_id,
+        node_instance=node.instance,
+        metrics=m,
         timestamp=ts,
     )
-    log.info("✅ Air   node=%d  temp=%.1f°C  hum=%.1f%%  UV=%.1f",
-             payload.node_id,
-             payload.metrics.air_temp,
-             payload.metrics.air_humidity,
-             payload.metrics.uv_index)
+    log.info("✅ Air   zone=%d inst=%d  temp=%.1f°C  hum=%.1f%%  light=%.1f%%",
+             zone_id, node.instance, metrics.air_temp, metrics.air_humidity, metrics.light)
 
     automation.evaluate_weather(
-        metrics=air_metrics,
-        node_id=payload.node_id,
+        metrics=m,
+        zone_id=zone_id,
         publish_fn=publish_command,
         write_event_fn=influx_service.write_automation_event,
     )
@@ -150,6 +142,7 @@ def _on_connect(client, userdata, flags, reason_code, properties=None):
         log.info("Connected to MQTT broker, subscribed to %s", SUBSCRIBE_TOPIC)
     else:
         log.error("MQTT connection failed — reason code %s", reason_code)
+
 
 def _on_disconnect(client, userdata, flags, reason_code, properties=None):
     if reason_code != 0:

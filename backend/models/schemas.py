@@ -2,64 +2,61 @@
 Tameer — Data Models & Validation
 ==================================
 Pydantic models that mirror the exact JSON payloads published by the
-ESP32 leader node. Invalid / out-of-range readings
-are rejected before they ever reach InfluxDB.
+ESP32 leader node. Invalid / out-of-range readings are rejected before
+they ever reach InfluxDB.
 """
 
 from __future__ import annotations
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal, Union
 from pydantic import BaseModel, Field, model_validator
 
 
-# ── Soil metrics ──────────────────────────────────────────────────────────────
+# ── Soil metrics (only sensors physically present) ────────────────────────────
 class SoilMetrics(BaseModel):
-    moisture:    float = Field(..., ge=0,   le=100,  description="Soil moisture %")
-    soil_temp:   float = Field(..., ge=-10, le=60,   description="Soil temperature °C")
-    ec:          float = Field(..., ge=0,   le=10,   description="Electrical conductivity mS/cm")
-    ph:          float = Field(..., ge=3,   le=10,   description="Soil pH")
-    nitrogen:    float = Field(..., ge=0,   le=1000, description="Nitrogen mg/kg")
-    phosphorus:  float = Field(..., ge=0,   le=500,  description="Phosphorus mg/kg")
-    potassium:   float = Field(..., ge=0,   le=1000, description="Potassium mg/kg")
+    moisture:  float = Field(..., ge=0,   le=100, description="Soil moisture %")
+    soil_temp: float = Field(..., ge=-10, le=60,  description="Soil temperature °C")
 
 
-# ── Air / weather metrics ─────────────────────────────────────────────────────
+# ── Air / weather metrics (only sensors physically present) ───────────────────
 class AirMetrics(BaseModel):
-    air_temp:       float = Field(..., ge=-20, le=60,   description="Air temperature °C")
-    air_humidity:   float = Field(..., ge=0,   le=100,  description="Relative humidity %")
-    pressure:       float = Field(..., ge=800, le=1200, description="Air pressure hPa")
-    light:          float = Field(..., ge=0,   le=1023, description="Light level (ADC 0-1023)")
-    rain:           int   = Field(..., ge=0,   le=1,    description="Rain detected (0/1)")
-    wind_speed:     float = Field(..., ge=0,   le=50,   description="Wind speed m/s")
-    wind_direction: float = Field(..., ge=0,   le=360,  description="Wind direction degrees")
-    uv_index:       float = Field(..., ge=0,   le=11,   description="UV index")
-    air_quality:    float = Field(..., ge=0,   le=1000, description="MQ135 ppm")
+    air_temp:    float = Field(..., ge=-20, le=60,  description="Air temperature °C")
+    air_humidity:float = Field(..., ge=0,   le=100, description="Relative humidity %")
+    light:       float = Field(..., ge=0,   le=100, description="LDR light level %")
+    air_quality: float = Field(..., ge=0,   le=100, description="MQ135 air quality %")
 
 
-# ── Generic node payload (what the leader publishes) ─────────────────────────
-class SoilPayload(BaseModel):
-    leader_id:  Optional[int]
-    node_id:    int
-    node_type:  Literal["soil"]
-    is_leader:  bool
-    timestamp:  datetime
-    metrics:    SoilMetrics
+# ── Per-node reading inside a zone payload ────────────────────────────────────
+class NodeReading(BaseModel):
+    node_type: Literal["soil", "weather"]
+    instance:  int
+    metrics:   Union[SoilMetrics, AirMetrics]
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_metrics(cls, data: dict) -> dict:
+        nt      = data.get("node_type")
+        metrics = data.get("metrics", {})
+        if isinstance(metrics, dict):
+            if nt == "soil":
+                data["metrics"] = SoilMetrics(**metrics)
+            elif nt == "weather":
+                data["metrics"] = AirMetrics(**metrics)
+        return data
 
 
-class WeatherPayload(BaseModel):
-    leader_id:  Optional[int]
-    node_id:    int
-    node_type:  Literal["weather"]
-    is_leader:  bool
-    timestamp:  datetime
-    metrics:    AirMetrics
+# ── Zone aggregate payload (what the leader publishes to MQTT) ────────────────
+class ZonePayload(BaseModel):
+    zone_id:         int
+    leader_instance: int
+    nodes:           list[NodeReading]
 
 
-# ── Automation command (backend → MQTT → ESP32) ───────────────────────────────
+# ── Automation command (backend → MQTT → ESP32 actuator) ─────────────────────
 class AutomationCommand(BaseModel):
-    command_id:    str
-    target_node:   int
-    actuator:      Literal[
+    command_id:     str
+    zone_id:        int
+    actuator:       Literal[
         "irrigation_valve",
         "fertilizer_pump",
         "fan",
@@ -68,17 +65,18 @@ class AutomationCommand(BaseModel):
         "shade",
         "spray_nozzle",
     ]
-    action:        Literal["on", "off"]
+    action:         Literal["on", "off"]
     trigger_reason: str
-    timestamp:     datetime
+    timestamp:      datetime
 
 
 # ── API response schemas ──────────────────────────────────────────────────────
 class LatestReadingsResponse(BaseModel):
-    node_id:    int
-    node_type:  str
-    timestamp:  datetime
-    metrics:    dict
+    zone_id:       int
+    node_type:     str
+    node_instance: int
+    timestamp:     datetime
+    metrics:       dict
 
 
 class AutomationEvent(BaseModel):
@@ -86,4 +84,4 @@ class AutomationEvent(BaseModel):
     actuator:       str
     action:         str
     trigger_reason: str
-    node_id:        int
+    zone_id:        int

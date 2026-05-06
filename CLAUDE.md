@@ -45,6 +45,17 @@ This is a senior thesis project at AUC (American University in Cairo).
 
 ---
 
+## Zone architecture
+
+Each **zone** = one plot of land, containing:
+- 1 soil node  (ESP32 with capacitive moisture + DS18B20 temp sensor)
+- 1 actuator node  (ESP32 controlling the irrigation valve)
+- 1 camera node  (ESP32-CAM, uploads directly over HTTPS)
+
+One **weather node** (DHT22 + LDR + MQ135) is shared across the whole plot (zone_id = 0).
+
+All soil + weather nodes form a single ESP-NOW mesh (channel 11, broadcast). One node wins the leader election each cycle and publishes aggregated data to HiveMQ Cloud over WiFi.
+
 ## Project structure
 
 ```
@@ -54,6 +65,11 @@ tameer/
 ├── .env                             ← credentials (never commit)
 ├── .gitignore
 ├── requirements.txt
+├── firmware/
+│   ├── SoilNode/SoilNode.ino        ← ZONE_ID + NODE_INSTANCE defines at top
+│   ├── WeatherNode/WeatherNode.ino  ← ZONE_ID=0 (common), NODE_INSTANCE=1
+│   ├── ActuatorNode/ActuatorNode.ino← ZONE_ID define at top
+│   └── CamNode/CamNode.ino         ← ZONE_ID + CAM_INSTANCE defines at top
 ├── scripts/
 │   └── purge_simulator_data.py      ← one-time InfluxDB cleanup (already run)
 └── backend/
@@ -70,7 +86,8 @@ tameer/
     └── routers/
         ├── __init__.py
         ├── sensors.py               ← REST endpoints for sensor data
-        └── automation.py            ← REST endpoints for events + manual override
+        ├── automation.py            ← REST endpoints for events + manual override
+        └── camera.py               ← image upload + serve endpoints
 ```
 
 ---
@@ -116,40 +133,54 @@ DEBUG
 
 | Topic | Direction | Publisher | Subscriber |
 |-------|-----------|-----------|------------|
-| `smartplant/soilnode1` | ESP32 → cloud | ESP32 leader | FastAPI backend |
-| `smartplant/weathernode1` | ESP32 → cloud | ESP32 leader | FastAPI backend |
-| `smartplant/commands/<node_id>` | cloud → ESP32 | FastAPI backend | ESP32 leader |
+| `smartplant/zone/{zone_id}/data` | ESP32 → cloud | ESP32 leader | FastAPI backend |
+| `smartplant/zone/{zone_id}/actuator/cmd` | cloud → ESP32 | FastAPI backend | Actuator node |
+| `smartplant/zone/{zone_id}/actuator/ack` | ESP32 → cloud | Actuator node | FastAPI backend |
 
+The backend subscribes to `smartplant/zone/+/data` (single-level wildcard).
 The backend uses `MQTT_USERNAME_BACKEND` credentials.
+
+### MQTT payload format (published by the elected leader)
+
+```json
+{
+  "zone_id": 1,
+  "leader_instance": 1,
+  "nodes": [
+    { "node_type": "soil",    "instance": 1, "metrics": { "moisture": 45.2, "soil_temp": 22.1 } },
+    { "node_type": "weather", "instance": 1, "metrics": { "air_temp": 28.3, "air_humidity": 65.4, "light": 72.0, "air_quality": 35.0 } }
+  ]
+}
+```
 
 ---
 
 ## InfluxDB measurements
 
-| Measurement | Tags | Fields |
-|-------------|------|--------|
-| `soil_readings` | node_id | moisture, soil_temp, ec, ph, nitrogen, phosphorus, potassium |
-| `air_readings` | node_id | air_temp, air_humidity, pressure, light, rain, wind_speed, wind_direction, uv_index, air_quality |
-| `automation_events` | node_id, actuator, action | trigger_reason |
-| `plant_health` | node_id | disease_class, confidence, health_score (Phase 4) |
+All measurements share the tags `zone_id`, `node_type`, `node_instance`.
+
+| Measurement | Extra tags | Fields |
+|-------------|-----------|--------|
+| `soil_readings` | — | moisture, soil_temp, dryness_level |
+| `air_readings` | — | air_temp, air_humidity, light, air_quality |
+| `automation_events` | actuator, action | trigger_reason |
+| `irrigation` | — | irrigation_minutes |
+| `camera_data` | — | image_url, health_status (Phase 4), confidence (Phase 4) |
+| `plant_health` | — | disease_class, confidence, health_score (Phase 4) |
 
 ---
 
-## Automation thresholds (radish-optimised)
+## Automation thresholds (radish-optimised, based on connected sensors)
 
 | Trigger | Threshold | Actuator | Action |
 |---------|-----------|----------|--------|
-| moisture | < 40% | irrigation_valve | on |
+| moisture | < 40% | irrigation_valve | irrigate (ET-adjusted minutes) |
 | moisture | > 85% | irrigation_valve | off |
-| rain | == 1 | irrigation_valve | off |
-| nitrogen | < 80 mg/kg | fertilizer_pump | on |
-| phosphorus | < 20 mg/kg | fertilizer_pump | on |
-| potassium | < 80 mg/kg | fertilizer_pump | on |
 | air_temp | > 35°C | fan | on |
 | air_temp | < 10°C | heater | on |
-| light | < 200 ADC | grow_light | on |
-| uv_index | > 8 | shade | on |
-| wind_speed | > 15 m/s | shade | on |
+| light | < 20% | grow_light | on |
+
+Commands are routed per zone: `smartplant/zone/{zone_id}/actuator/cmd`.
 
 ---
 
@@ -181,9 +212,24 @@ open http://localhost:8000/docs
 
 ---
 
+## Firmware flashing checklist
+
+When flashing a new node, set these defines at the top of the sketch:
+
+| Node | File | Defines to set |
+|------|------|----------------|
+| Soil node (zone 1) | SoilNode.ino | `ZONE_ID 1`, `NODE_INSTANCE 1` |
+| Soil node (zone 2) | SoilNode.ino | `ZONE_ID 2`, `NODE_INSTANCE 1` |
+| Weather node | WeatherNode.ino | `ZONE_ID 0`, `NODE_INSTANCE 1` |
+| Actuator (zone 1) | ActuatorNode.ino | `ZONE_ID 1` |
+| Camera (zone 1) | CamNode.ino | `ZONE_ID 1`, `CAM_INSTANCE 1` |
+
+---
+
 ## What NOT to change without discussion
 
-- The MQTT topic structure (`smartplant/...`) — the ESP32 firmware will depend on this
+- The MQTT topic structure (`smartplant/zone/...`) — the ESP32 firmware depends on it
 - The InfluxDB measurement names and field names — the dashboard queries depend on this
 - The `.env` variable names — all services depend on exact spelling
-- The Pydantic schema field names — they must match what the ESP32 publishes
+- The Pydantic schema field names in `schemas.py` — they must match what the ESP32 publishes
+- The ESP-NOW channel (11) and packet struct layout — all nodes must agree

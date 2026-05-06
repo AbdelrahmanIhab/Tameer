@@ -17,7 +17,7 @@ router = APIRouter(prefix="/automation", tags=["Automation"])
 
 
 class ManualCommandRequest(BaseModel):
-    target_node: int
+    zone_id:  int
     actuator: Literal[
         "irrigation_valve", "fertilizer_pump",
         "fan", "heater", "grow_light", "shade", "spray_nozzle",
@@ -34,13 +34,10 @@ async def get_automation_events(hours: int = 24):
 
 @router.post("/command")
 async def send_manual_command(body: ManualCommandRequest):
-    """
-    Engineer dashboard: manually override an actuator.
-    The command is published to MQTT and logged in InfluxDB.
-    """
+    """Engineer dashboard: manually override an actuator in a specific zone."""
     cmd = {
         "command_id":     "manual",
-        "target_node":    body.target_node,
+        "zone_id":        body.zone_id,
         "actuator":       body.actuator,
         "action":         body.action,
         "trigger_reason": "manual override from engineer dashboard",
@@ -48,7 +45,7 @@ async def send_manual_command(body: ManualCommandRequest):
     }
     publish_command(cmd)
     influx_service.write_automation_event(
-        node_id=body.target_node,
+        zone_id=body.zone_id,
         actuator=body.actuator,
         action=body.action,
         trigger_reason=cmd["trigger_reason"],
