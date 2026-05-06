@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import automation, camera, sensors
+from backend.routers import automation, camera, debug, sensors
 from backend.services import mqtt_service
 
 load_dotenv()
@@ -61,6 +61,7 @@ app.add_middleware(
 app.include_router(sensors.router)
 app.include_router(automation.router)
 app.include_router(camera.router)
+app.include_router(debug.router)
 
 
 @app.get("/", tags=["Health"])

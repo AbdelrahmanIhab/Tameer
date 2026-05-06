@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import ssl
+import uuid
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -21,7 +22,7 @@ from pydantic import ValidationError
 from dotenv import load_dotenv
 
 from backend.models.schemas import ZonePayload, SoilMetrics, AirMetrics
-from backend.services import influx_service, automation
+from backend.services import influx_service, automation, debug_bus
 
 load_dotenv()
 
@@ -73,23 +74,57 @@ def _on_message(client, userdata, msg: mqtt.MQTTMessage) -> None:
 
     ts = datetime.now(_CAIRO)
     zone_id = payload.zone_id
+    trace_id = uuid.uuid4().hex[:8]
+
+    try:
+        debug_bus.emit({
+            "trace_id": trace_id,
+            "ts": ts.isoformat(),
+            "stage": "mqtt_received",
+            "zone_id": zone_id,
+            "node_type": "zone",
+            "node_instance": payload.leader_instance,
+            "status": "ok",
+            "detail": (f"zone={zone_id} leader={payload.leader_instance} "
+                       f"nodes={len(payload.nodes)}: "
+                       f"{', '.join(f'{n.node_type}#{n.instance}' for n in payload.nodes)}"),
+            "extra": {"nodes": [{"type": n.node_type, "instance": n.instance} for n in payload.nodes]},
+        })
+    except Exception:
+        pass
 
     for node in payload.nodes:
         if node.node_type == "soil":
-            _handle_soil(node, zone_id, ts)
+            _handle_soil(node, zone_id, ts, trace_id)
         elif node.node_type == "weather":
-            _handle_weather(node, zone_id, ts)
+            _handle_weather(node, zone_id, ts, trace_id)
 
 
-def _handle_soil(node, zone_id: int, ts: datetime) -> None:
+def _handle_soil(node, zone_id: int, ts: datetime, trace_id: str = "") -> None:
     metrics: SoilMetrics = node.metrics
     m = metrics.model_dump()
+
+    try:
+        debug_bus.emit({
+            "trace_id": trace_id,
+            "ts": ts.isoformat(),
+            "stage": "processing",
+            "zone_id": zone_id,
+            "node_type": "soil",
+            "node_instance": node.instance,
+            "status": "ok",
+            "detail": f"moisture={metrics.moisture:.1f}%  soil_temp={metrics.soil_temp:.1f}°C",
+            "extra": m,
+        })
+    except Exception:
+        pass
 
     influx_service.write_soil_reading(
         zone_id=zone_id,
         node_instance=node.instance,
         metrics=m,
         timestamp=ts,
+        trace_id=trace_id,
     )
     log.info("✅ Soil  zone=%d inst=%d  moisture=%.1f%%  temp=%.1f°C",
              zone_id, node.instance, metrics.moisture, metrics.soil_temp)
@@ -99,6 +134,7 @@ def _handle_soil(node, zone_id: int, ts: datetime) -> None:
         zone_id=zone_id,
         publish_fn=publish_command,
         write_event_fn=influx_service.write_automation_event,
+        trace_id=trace_id,
     )
 
     irr_minutes = automation.compute_irrigation_minutes(
@@ -112,19 +148,38 @@ def _handle_soil(node, zone_id: int, ts: datetime) -> None:
         node_instance=node.instance,
         minutes=irr_minutes,
         timestamp=ts,
+        trace_id=trace_id,
     )
 
 
-def _handle_weather(node, zone_id: int, ts: datetime) -> None:
+def _handle_weather(node, zone_id: int, ts: datetime, trace_id: str = "") -> None:
     metrics: AirMetrics = node.metrics
     m = metrics.model_dump()
     _weather_cache.update(m)
+
+    try:
+        debug_bus.emit({
+            "trace_id": trace_id,
+            "ts": ts.isoformat(),
+            "stage": "processing",
+            "zone_id": zone_id,
+            "node_type": "weather",
+            "node_instance": node.instance,
+            "status": "ok",
+            "detail": (f"air_temp={metrics.air_temp:.1f}°C  "
+                       f"humidity={metrics.air_humidity:.1f}%  "
+                       f"light={metrics.light:.1f}%"),
+            "extra": m,
+        })
+    except Exception:
+        pass
 
     influx_service.write_air_reading(
         zone_id=zone_id,
         node_instance=node.instance,
         metrics=m,
         timestamp=ts,
+        trace_id=trace_id,
     )
     log.info("✅ Air   zone=%d inst=%d  temp=%.1f°C  hum=%.1f%%  light=%.1f%%",
              zone_id, node.instance, metrics.air_temp, metrics.air_humidity, metrics.light)
@@ -134,6 +189,7 @@ def _handle_weather(node, zone_id: int, ts: datetime) -> None:
         zone_id=zone_id,
         publish_fn=publish_command,
         write_event_fn=influx_service.write_automation_event,
+        trace_id=trace_id,
     )
 
 

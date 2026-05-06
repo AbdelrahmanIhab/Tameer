@@ -24,6 +24,8 @@ from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 from dotenv import load_dotenv
 
+from backend.services import debug_bus
+
 log = logging.getLogger("tameer.influx")
 
 load_dotenv()
@@ -40,6 +42,28 @@ _write_api = _client.write_api(write_options=SYNCHRONOUS)
 _query_api = _client.query_api()
 
 
+# ── Debug helper ─────────────────────────────────────────────────────────────
+
+def _dbg(trace_id: str, zone_id: int, node_type: str, node_instance: int,
+         measurement: str, status: str, exc: Exception | None = None) -> None:
+    try:
+        detail = (f"{measurement} written ✓" if status == "ok"
+                  else f"{measurement} FAILED ✗: {exc}")
+        debug_bus.emit({
+            "trace_id":      trace_id,
+            "ts":            datetime.now(timezone.utc).isoformat(),
+            "stage":         "influx_write",
+            "zone_id":       zone_id,
+            "node_type":     node_type,
+            "node_instance": node_instance,
+            "status":        status,
+            "detail":        detail,
+            "extra":         {} if exc is None else {"error": str(exc)},
+        })
+    except Exception:
+        pass
+
+
 # ── Writes ────────────────────────────────────────────────────────────────────
 
 def write_soil_reading(
@@ -47,6 +71,7 @@ def write_soil_reading(
     node_instance: int,
     metrics: dict,
     timestamp: datetime,
+    trace_id: str = "",
 ) -> None:
     moisture = metrics.get("moisture", 50.0)
     dryness  = "wet" if moisture >= 70 else ("moderate" if moisture >= 40 else "dry")
@@ -64,8 +89,10 @@ def write_soil_reading(
     try:
         _write_api.write(bucket=_BUCKET, record=point)
         log.debug("Wrote soil_readings zone=%s instance=%s", zone_id, node_instance)
+        _dbg(trace_id, zone_id, "soil", node_instance, "soil_readings", "ok")
     except Exception as exc:
         log.error("InfluxDB write failed (soil): %s", exc)
+        _dbg(trace_id, zone_id, "soil", node_instance, "soil_readings", "error", exc)
 
 
 def write_air_reading(
@@ -73,6 +100,7 @@ def write_air_reading(
     node_instance: int,
     metrics: dict,
     timestamp: datetime,
+    trace_id: str = "",
 ) -> None:
     point = (
         Point("air_readings")
@@ -86,8 +114,10 @@ def write_air_reading(
     try:
         _write_api.write(bucket=_BUCKET, record=point)
         log.debug("Wrote air_readings zone=%s instance=%s", zone_id, node_instance)
+        _dbg(trace_id, zone_id, "weather", node_instance, "air_readings", "ok")
     except Exception as exc:
         log.error("InfluxDB write failed (air): %s", exc)
+        _dbg(trace_id, zone_id, "weather", node_instance, "air_readings", "error", exc)
 
 
 def write_automation_event(
@@ -96,6 +126,7 @@ def write_automation_event(
     action: str,
     trigger_reason: str,
     timestamp: datetime | None = None,
+    trace_id: str = "",
 ) -> None:
     ts = timestamp or datetime.now(_CAIRO)
     point = (
@@ -109,8 +140,10 @@ def write_automation_event(
     )
     try:
         _write_api.write(bucket=_BUCKET, record=point)
+        _dbg(trace_id, zone_id, "automation", 0, "automation_events", "ok")
     except Exception as exc:
         log.error("InfluxDB write failed (automation_event): %s", exc)
+        _dbg(trace_id, zone_id, "automation", 0, "automation_events", "error", exc)
 
 
 def write_irrigation_reading(
@@ -118,6 +151,7 @@ def write_irrigation_reading(
     node_instance: int,
     minutes: float,
     timestamp: datetime | None = None,
+    trace_id: str = "",
 ) -> None:
     ts = timestamp or datetime.now(_CAIRO)
     point = (
@@ -131,8 +165,10 @@ def write_irrigation_reading(
     try:
         _write_api.write(bucket=_BUCKET, record=point)
         log.debug("Wrote irrigation zone=%s instance=%s: %.1f min", zone_id, node_instance, minutes)
+        _dbg(trace_id, zone_id, "soil", node_instance, f"irrigation ({minutes:.1f} min)", "ok")
     except Exception as exc:
         log.error("InfluxDB write failed (irrigation): %s", exc)
+        _dbg(trace_id, zone_id, "soil", node_instance, "irrigation", "error", exc)
 
 
 def write_camera_data(
@@ -142,6 +178,7 @@ def write_camera_data(
     health_status: str | None = None,
     confidence: float | None = None,
     timestamp: datetime | None = None,
+    trace_id: str = "",
 ) -> None:
     ts = timestamp or datetime.now(_CAIRO)
     point = (
@@ -159,8 +196,10 @@ def write_camera_data(
     try:
         _write_api.write(bucket=_BUCKET, record=point)
         log.debug("Wrote camera_data zone=%s instance=%s", zone_id, cam_instance)
+        _dbg(trace_id, zone_id, "camera", cam_instance, "camera_data", "ok")
     except Exception as exc:
         log.error("InfluxDB write failed (camera): %s", exc)
+        _dbg(trace_id, zone_id, "camera", cam_instance, "camera_data", "error", exc)
 
 
 # ── Reads ─────────────────────────────────────────────────────────────────────

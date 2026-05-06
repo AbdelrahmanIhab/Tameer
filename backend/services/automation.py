@@ -22,6 +22,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Callable
 
+from backend.services import debug_bus
+
 log = logging.getLogger("tameer.automation")
 
 THRESHOLDS = {
@@ -71,6 +73,7 @@ def evaluate_soil(
     zone_id: int,
     publish_fn: Callable[[dict], None],
     write_event_fn: Callable[..., None],
+    trace_id: str = "",
 ) -> list[dict]:
     commands = []
     m = metrics
@@ -80,13 +83,13 @@ def evaluate_soil(
         cmd = _make_command(zone_id, "irrigation_valve", "irrigate",
                             f"moisture={m['moisture']}% < {THRESHOLDS['moisture_low']}% — {minutes} min")
         cmd["minutes"] = minutes
-        _fire(cmd, publish_fn, write_event_fn)
+        _fire(cmd, publish_fn, write_event_fn, trace_id)
         commands.append(cmd)
 
     elif m["moisture"] > THRESHOLDS["moisture_high"]:
         cmd = _make_command(zone_id, "irrigation_valve", "off",
                             f"moisture={m['moisture']}% > {THRESHOLDS['moisture_high']}%")
-        _fire(cmd, publish_fn, write_event_fn)
+        _fire(cmd, publish_fn, write_event_fn, trace_id)
         commands.append(cmd)
 
     return commands
@@ -97,6 +100,7 @@ def evaluate_weather(
     zone_id: int,
     publish_fn: Callable[[dict], None],
     write_event_fn: Callable[..., None],
+    trace_id: str = "",
 ) -> list[dict]:
     commands = []
     m = metrics
@@ -104,19 +108,19 @@ def evaluate_weather(
     if m["air_temp"] > THRESHOLDS["air_temp_hot"]:
         cmd = _make_command(zone_id, "fan", "on",
                             f"air_temp={m['air_temp']}°C > {THRESHOLDS['air_temp_hot']}°C")
-        _fire(cmd, publish_fn, write_event_fn)
+        _fire(cmd, publish_fn, write_event_fn, trace_id)
         commands.append(cmd)
 
     if m["air_temp"] < THRESHOLDS["air_temp_cold"]:
         cmd = _make_command(zone_id, "heater", "on",
                             f"air_temp={m['air_temp']}°C < {THRESHOLDS['air_temp_cold']}°C")
-        _fire(cmd, publish_fn, write_event_fn)
+        _fire(cmd, publish_fn, write_event_fn, trace_id)
         commands.append(cmd)
 
     if m["light"] < THRESHOLDS["light_low"]:
         cmd = _make_command(zone_id, "grow_light", "on",
                             f"light={m['light']}% < {THRESHOLDS['light_low']}%")
-        _fire(cmd, publish_fn, write_event_fn)
+        _fire(cmd, publish_fn, write_event_fn, trace_id)
         commands.append(cmd)
 
     return commands
@@ -139,14 +143,34 @@ def _fire(
     cmd: dict,
     publish_fn: Callable[[dict], None],
     write_event_fn: Callable[..., None],
+    trace_id: str = "",
 ) -> None:
     log.info("🤖 AUTOMATION  zone=%s  %s → %s [%s]  reason: %s",
              cmd["zone_id"], cmd["actuator"], cmd["action"],
              cmd["command_id"], cmd["trigger_reason"])
+    try:
+        debug_bus.emit({
+            "trace_id":      trace_id,
+            "ts":            datetime.now(timezone.utc).isoformat(),
+            "stage":         "automation",
+            "zone_id":       cmd["zone_id"],
+            "node_type":     "—",
+            "node_instance": 0,
+            "status":        "ok",
+            "detail":        f"{cmd['actuator']} → {cmd['action']}  ·  {cmd['trigger_reason']}",
+            "extra": {
+                "command_id": cmd["command_id"],
+                "actuator":   cmd["actuator"],
+                "action":     cmd["action"],
+            },
+        })
+    except Exception:
+        pass
     publish_fn(cmd)
     write_event_fn(
         zone_id=cmd["zone_id"],
         actuator=cmd["actuator"],
         action=cmd["action"],
         trigger_reason=cmd["trigger_reason"],
+        trace_id=trace_id,
     )
