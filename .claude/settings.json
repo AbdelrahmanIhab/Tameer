@@ -14,7 +14,13 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8001/debug)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8001/debug/stream)",
       "Bash(kill %1 %2)",
-      "Bash(wait)"
+      "Bash(wait)",
+      "Bash(railway status *)",
+      "Bash(python3 -c \"import cairosvg\")",
+      "Bash(python3 -c \"from PIL import Image\")",
+      "Bash(python3 -c \"import cairosvg; print\\('cairosvg ok'\\)\")",
+      "Bash(python3 -c \"from PIL import Image; print\\('PIL ok'\\)\")",
+      "Bash(npm install *)"
     ],
     "additionalDirectories": [
       "/home/abdelrahman/tameer-mobile"
