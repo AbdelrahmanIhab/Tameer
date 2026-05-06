@@ -1,9 +1,9 @@
 """
 Tameer — Camera Router
 =======================
-POST /camera/upload     — ESP32-CAM pushes a JPEG; stored locally + uploaded to Cloudinary
-GET  /camera/latest.jpg — serve the most recently uploaded image
-GET  /camera/debug      — last 20 raw InfluxDB records (sensor + camera data)
+POST /camera/upload/{location}        — ESP32-CAM pushes a JPEG for a specific location
+GET  /camera/latest/{location}.jpg    — serve the most recently uploaded image for a location
+GET  /camera/debug                    — last 20 raw InfluxDB records (sensor + camera + irrigation)
 """
 
 import os
@@ -25,44 +25,48 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET"),
 )
 
-UPLOAD_PATH = "latest.jpg"
-
 router = APIRouter(prefix="/camera", tags=["Camera"])
 
 
-@router.post("/upload")
-async def upload_image(image: UploadFile = File(...)):
-    """Accept a JPEG from the ESP32-CAM, save locally, and push to Cloudinary."""
+def _local_path(location: str) -> str:
+    return f"latest_{location}.jpg"
+
+
+@router.post("/upload/{location}")
+async def upload_image(location: str, image: UploadFile = File(...)):
+    """Accept a JPEG from the ESP32-CAM for the given location, save locally, and push to Cloudinary."""
     contents = await image.read()
     ts = datetime.now(timezone.utc)
+    local_path = _local_path(location)
 
-    with open(UPLOAD_PATH, "wb") as f:
+    with open(local_path, "wb") as f:
         f.write(contents)
 
     try:
         result = cloudinary.uploader.upload(
             contents,
             folder="tameer",
-            public_id=f"plant_{ts.strftime('%Y%m%d_%H%M%S')}",
+            public_id=f"{location}_{ts.strftime('%Y%m%d_%H%M%S')}",
             resource_type="image",
         )
         image_url = result.get("secure_url", "")
-        influx_service.write_camera_data(image_url=image_url, timestamp=ts)
-        return {"status": "received", "image_url": image_url, "timestamp": str(ts)}
+        influx_service.write_camera_data(image_url=image_url, location=location, timestamp=ts)
+        return {"status": "received", "location": location, "image_url": image_url, "timestamp": str(ts)}
     except Exception as exc:
-        return {"status": "received_locally", "error": str(exc)}
+        return {"status": "received_locally", "location": location, "error": str(exc)}
 
 
-@router.get("/latest.jpg")
-def latest_image():
-    """Serve the most recently uploaded plant image."""
-    if os.path.exists(UPLOAD_PATH):
-        return FileResponse(UPLOAD_PATH, media_type="image/jpeg")
-    return HTMLResponse("<h2>No image uploaded yet</h2>", status_code=404)
+@router.get("/latest/{location}.jpg")
+def latest_image(location: str):
+    """Serve the most recently uploaded plant image for a location."""
+    path = _local_path(location)
+    if os.path.exists(path):
+        return FileResponse(path, media_type="image/jpeg")
+    return HTMLResponse(f"<h2>No image uploaded yet for location '{location}'</h2>", status_code=404)
 
 
 @router.get("/debug")
 def debug_influx():
-    """Return the last 20 raw InfluxDB records across sensor and camera measurements."""
+    """Return the last 20 raw InfluxDB records across sensor, camera, and irrigation measurements."""
     rows = influx_service.query_debug_records(limit=20)
     return {"count": len(rows), "records": rows}

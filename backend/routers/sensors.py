@@ -17,9 +17,11 @@ router = APIRouter(prefix="/sensors", tags=["Sensors"])
 
 
 @router.get("/latest")
-async def get_latest_all():
-    """Unified snapshot: latest soil + weather + camera image + plant health."""
-    return influx_service.query_latest_all()
+async def get_latest_all(
+    node_id: int | None = Query(None, description="Filter by node ID"),
+):
+    """Unified snapshot: latest soil + weather + camera image + plant health + irrigation minutes."""
+    return influx_service.query_latest_all(node_id=node_id)
 
 
 @router.get("/soil/latest")

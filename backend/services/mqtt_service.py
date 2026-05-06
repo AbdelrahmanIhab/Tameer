@@ -36,6 +36,9 @@ COMMAND_TOPIC    = "smartplant/commands/{node_id}"
 
 _mqtt_client: mqtt.Client | None = None
 
+# Latest weather metrics cached in memory so irrigation can use them without a DB round-trip
+_weather_cache: dict = {}
+
 
 # ── Publish helper (called by automation engine) ──────────────────────────────
 def publish_command(cmd: dict) -> None:
@@ -76,9 +79,10 @@ def _handle_soil(raw: dict) -> None:
     ts = payload.timestamp.replace(tzinfo=timezone.utc) if payload.timestamp.tzinfo is None \
         else payload.timestamp
 
+    metrics = payload.metrics.model_dump()
     influx_service.write_soil_reading(
         node_id=payload.node_id,
-        metrics=payload.metrics.model_dump(),
+        metrics=metrics,
         timestamp=ts,
     )
     log.info("✅ Soil  node=%d  moisture=%.1f%%  pH=%.2f  temp=%.1f°C",
@@ -88,10 +92,22 @@ def _handle_soil(raw: dict) -> None:
              payload.metrics.soil_temp)
 
     automation.evaluate_soil(
-        metrics=payload.metrics.model_dump(),
+        metrics=metrics,
         node_id=payload.node_id,
         publish_fn=publish_command,
         write_event_fn=influx_service.write_automation_event,
+    )
+
+    irr_minutes = automation.compute_irrigation_minutes(
+        moisture=metrics["moisture"],
+        air_temp=_weather_cache.get("air_temp", 25.0),
+        humidity=_weather_cache.get("air_humidity", 50.0),
+        light=_weather_cache.get("light", 500.0),
+    )
+    influx_service.write_irrigation_reading(
+        node_id=payload.node_id,
+        minutes=irr_minutes,
+        timestamp=ts,
     )
 
 
@@ -105,9 +121,12 @@ def _handle_weather(raw: dict) -> None:
     ts = payload.timestamp.replace(tzinfo=timezone.utc) if payload.timestamp.tzinfo is None \
         else payload.timestamp
 
+    air_metrics = payload.metrics.model_dump()
+    _weather_cache.update(air_metrics)
+
     influx_service.write_air_reading(
         node_id=payload.node_id,
-        metrics=payload.metrics.model_dump(),
+        metrics=air_metrics,
         timestamp=ts,
     )
     log.info("✅ Air   node=%d  temp=%.1f°C  hum=%.1f%%  UV=%.1f",
@@ -117,7 +136,7 @@ def _handle_weather(raw: dict) -> None:
              payload.metrics.uv_index)
 
     automation.evaluate_weather(
-        metrics=payload.metrics.model_dump(),
+        metrics=air_metrics,
         node_id=payload.node_id,
         publish_fn=publish_command,
         write_event_fn=influx_service.write_automation_event,
