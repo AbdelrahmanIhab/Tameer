@@ -7,7 +7,14 @@
       "Bash(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh)",
       "Bash(bash)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('\\\\n'.join\\(sorted\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\)\\)\")",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(python -c \"from backend.main import app; print\\([r.path for r in app.routes]\\)\")",
+      "Bash(python -m py_compile backend/routers/debug.py backend/services/debug_bus.py backend/services/automation.py backend/services/influx_service.py backend/services/mqtt_service.py backend/main.py)",
+      "Bash(uvicorn backend.main:app --port 8001)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8001/debug)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8001/debug/stream)",
+      "Bash(kill %1 %2)",
+      "Bash(wait)"
     ],
     "additionalDirectories": [
       "/home/abdelrahman/tameer-mobile"
