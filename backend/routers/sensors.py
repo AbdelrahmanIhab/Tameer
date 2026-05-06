@@ -16,6 +16,12 @@ from backend.services import influx_service
 router = APIRouter(prefix="/sensors", tags=["Sensors"])
 
 
+@router.get("/latest")
+async def get_latest_all():
+    """Unified snapshot: latest soil + weather + camera image + plant health."""
+    return influx_service.query_latest_all()
+
+
 @router.get("/soil/latest")
 async def get_latest_soil_all():
     """Latest soil reading across all nodes."""

@@ -44,6 +44,14 @@ def write_soil_reading(node_id: int, metrics: dict, timestamp: datetime) -> None
     )
     for field, value in metrics.items():
         point = point.field(field, float(value))
+    moisture = metrics.get("moisture", 50.0)
+    if moisture >= 70:
+        dryness = "wet"
+    elif moisture >= 40:
+        dryness = "moderate"
+    else:
+        dryness = "dry"
+    point = point.field("dryness_level", dryness)
     try:
         _write_api.write(bucket=_BUCKET, record=point)
         log.debug("Wrote soil reading for node %s", node_id)
@@ -139,6 +147,84 @@ from(bucket: "{_BUCKET}")
   |> sort(columns: ["_time"], desc: true)
 """
     return _run_query(flux)
+
+
+def write_camera_data(
+    image_url: str,
+    health_status: str | None = None,
+    confidence: float | None = None,
+    timestamp: datetime | None = None,
+) -> None:
+    ts = timestamp or datetime.now(timezone.utc)
+    point = (
+        Point("camera_data")
+        .tag("node_type", "camera")
+        .field("image_url", image_url)
+        .time(ts, WritePrecision.S)
+    )
+    if health_status is not None:
+        point = point.field("health_status", health_status)
+    if confidence is not None:
+        point = point.field("confidence", float(confidence))
+    try:
+        _write_api.write(bucket=_BUCKET, record=point)
+        log.debug("Wrote camera_data: %s", image_url)
+    except Exception as exc:
+        log.error("InfluxDB write failed (camera): %s", exc)
+
+
+def query_latest_all() -> dict:
+    """Return the latest soil, air, and camera readings in one call."""
+    soil_rows = query_latest_soil()
+    air_rows = query_latest_air()
+
+    camera_flux = f"""
+from(bucket: "{_BUCKET}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r["_measurement"] == "camera_data")
+  |> last()
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+"""
+    camera_rows = _run_query(camera_flux)
+
+    timestamp = None
+    if soil_rows:
+        timestamp = str(soil_rows[0].get("_time", ""))
+
+    camera = camera_rows[0] if camera_rows else {}
+    return {
+        "timestamp": timestamp,
+        "soil": soil_rows[0] if soil_rows else None,
+        "weather": air_rows[0] if air_rows else None,
+        "image_url": camera.get("image_url"),
+        "health_status": camera.get("health_status"),
+        "confidence": camera.get("confidence"),
+    }
+
+
+def query_debug_records(limit: int = 20) -> list[dict]:
+    """Return the last N raw records across sensor and camera measurements."""
+    flux = f"""
+from(bucket: "{_BUCKET}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r["_measurement"] == "soil_readings"
+         or r["_measurement"] == "air_readings"
+         or r["_measurement"] == "camera_data")
+  |> tail(n: {limit})
+"""
+    rows = []
+    tables = _query_api.query(flux, org=_ORG)
+    for table in tables:
+        for record in table.records:
+            rows.append({
+                "measurement": record.get_measurement(),
+                "time": str(record.get_time()),
+                "field": record.get_field(),
+                "value": record.get_value(),
+                "tags": {k: v for k, v in record.values.items()
+                         if k not in ("_start", "_stop", "_time", "_value", "_field", "_measurement")},
+            })
+    return rows
 
 
 def _run_query(flux: str) -> list[dict]:

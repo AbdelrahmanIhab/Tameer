@@ -1,0 +1,58 @@
+{
+  "tabs": { "farmer": "المزارع", "engineer": "المهندس" },
+  "farmer": {
+    "title": "نظام تعمير",
+    "moisture": "الرطوبة",
+    "airTemp": "درجة الحرارة",
+    "rain": "المطر",
+    "lastAction": "آخر إجراء",
+    "cropHealth": "صحة المحصول",
+    "checkPlant": "فحص نبتة",
+    "healthy": "صحية",
+    "uploadSuccess": "تم الرفع بنجاح",
+    "uploadFailed": "فشل الرفع",
+    "noImage": "لا توجد صورة",
+    "automationFired": "تم تنشيط الأتمتة"
+  },
+  "engineer": {
+    "title": "لوحة المهندس",
+    "soilReadings": "قراءات التربة",
+    "airReadings": "قراءات الهواء",
+    "moisture": "الرطوبة %",
+    "soilTemp": "حرارة التربة",
+    "ec": "الموصلية",
+    "ph": "الأس الهيدروجيني",
+    "nitrogen": "نيتروجين",
+    "phosphorus": "فوسفور",
+    "potassium": "بوتاسيوم",
+    "dryness": "مستوى الجفاف",
+    "airTemp": "حرارة الهواء",
+    "humidity": "الرطوبة",
+    "pressure": "الضغط",
+    "light": "الضوء",
+    "rain": "المطر",
+    "windSpeed": "سرعة الريح",
+    "windDir": "اتجاه الريح",
+    "uvIndex": "مؤشر UV",
+    "airQuality": "جودة الهواء",
+    "eventLog": "سجل الأحداث",
+    "manualOverride": "التحكم اليدوي",
+    "actuators": {
+      "irrigation_valve": "صمام الري",
+      "fertilizer_pump": "مضخة السماد",
+      "fan": "المروحة",
+      "heater": "السخان",
+      "grow_light": "مصباح النمو",
+      "shade": "التظليل",
+      "spray_nozzle": "فوهة الرش"
+    },
+    "on": "تشغيل",
+    "off": "إيقاف",
+    "historyChart": "سجل الرطوبة (24 ساعة)"
+  },
+  "common": {
+    "loading": "جاري التحميل...",
+    "error": "فشل تحميل البيانات",
+    "langToggle": "English"
+  }
+}

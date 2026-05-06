@@ -1,0 +1,58 @@
+{
+  "tabs": { "farmer": "Farmer", "engineer": "Engineer" },
+  "farmer": {
+    "title": "Tameer",
+    "moisture": "Moisture",
+    "airTemp": "Air Temp",
+    "rain": "Rain",
+    "lastAction": "Last Action",
+    "cropHealth": "Crop Health",
+    "checkPlant": "Check a Plant",
+    "healthy": "Healthy",
+    "uploadSuccess": "Upload successful",
+    "uploadFailed": "Upload failed",
+    "noImage": "No image yet",
+    "automationFired": "Automation triggered"
+  },
+  "engineer": {
+    "title": "Engineer View",
+    "soilReadings": "Soil Readings",
+    "airReadings": "Air Readings",
+    "moisture": "Moisture %",
+    "soilTemp": "Soil Temp",
+    "ec": "EC",
+    "ph": "pH",
+    "nitrogen": "Nitrogen",
+    "phosphorus": "Phosphorus",
+    "potassium": "Potassium",
+    "dryness": "Dryness",
+    "airTemp": "Air Temp",
+    "humidity": "Humidity",
+    "pressure": "Pressure",
+    "light": "Light",
+    "rain": "Rain",
+    "windSpeed": "Wind Speed",
+    "windDir": "Wind Dir",
+    "uvIndex": "UV Index",
+    "airQuality": "Air Quality",
+    "eventLog": "Automation Log",
+    "manualOverride": "Manual Override",
+    "actuators": {
+      "irrigation_valve": "Irrigation Valve",
+      "fertilizer_pump": "Fertilizer Pump",
+      "fan": "Fan",
+      "heater": "Heater",
+      "grow_light": "Grow Light",
+      "shade": "Shade",
+      "spray_nozzle": "Spray Nozzle"
+    },
+    "on": "ON",
+    "off": "OFF",
+    "historyChart": "Moisture History (24h)"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Failed to load data",
+    "langToggle": "عربي"
+  }
+}

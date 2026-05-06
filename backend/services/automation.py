@@ -44,6 +44,42 @@ THRESHOLDS = {
 }
 
 
+def compute_irrigation_minutes(
+    moisture: float,
+    air_temp: float = 25.0,
+    humidity: float = 50.0,
+    light: float = 50.0,
+) -> float:
+    """
+    ET-adjusted irrigation duration in minutes.
+    Returns 0.0 when the soil is wet enough (moisture >= 70%).
+    """
+    if moisture >= 70:
+        return 0.0
+    elif moisture >= 50:
+        base = 5.0
+    elif moisture >= 30:
+        base = 10.0
+    elif moisture >= 15:
+        base = 20.0
+    else:
+        base = 30.0
+
+    et = 1.0
+    if air_temp > 35:
+        et += 0.3
+    elif air_temp > 30:
+        et += 0.15
+    if humidity < 30:
+        et += 0.2
+    elif humidity < 50:
+        et += 0.1
+    if light > 700:
+        et += 0.1
+
+    return round(base * et, 1)
+
+
 def evaluate_soil(
     metrics: dict,
     node_id: int,
@@ -59,8 +95,10 @@ def evaluate_soil(
 
     # ── Irrigation ────────────────────────────────────────────────────────────
     if m["moisture"] < THRESHOLDS["moisture_low"]:
-        cmd = _make_command(node_id, "irrigation_valve", "on",
-                            f"moisture={m['moisture']}% < {THRESHOLDS['moisture_low']}%")
+        minutes = compute_irrigation_minutes(moisture=m["moisture"])
+        cmd = _make_command(node_id, "irrigation_valve", "irrigate",
+                            f"moisture={m['moisture']}% < {THRESHOLDS['moisture_low']}% — {minutes} min")
+        cmd["minutes"] = minutes
         _fire(cmd, publish_fn, write_event_fn)
         commands.append(cmd)
 
