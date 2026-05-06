@@ -14,6 +14,7 @@ import logging
 import os
 import ssl
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
@@ -35,6 +36,7 @@ SUBSCRIBE_TOPIC = "smartplant/zone/+/data"
 COMMAND_TOPIC   = "smartplant/zone/{zone_id}/actuator/cmd"
 
 _mqtt_client: mqtt.Client | None = None
+_CAIRO = ZoneInfo("Africa/Cairo")
 
 # Latest weather metrics cached in memory for irrigation ET adjustment
 _weather_cache: dict = {}
@@ -69,7 +71,7 @@ def _on_message(client, userdata, msg: mqtt.MQTTMessage) -> None:
         log.warning("ZonePayload validation failed on %s:\n%s", topic, exc)
         return
 
-    ts = datetime.now(timezone.utc)
+    ts = datetime.now(_CAIRO)
     zone_id = payload.zone_id
 
     for node in payload.nodes:
