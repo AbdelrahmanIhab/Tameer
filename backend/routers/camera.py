@@ -8,6 +8,7 @@ GET  /camera/debug                                    — last 20 raw InfluxDB r
 
 import os
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import cloudinary
 import cloudinary.uploader
@@ -27,6 +28,8 @@ cloudinary.config(
 
 router = APIRouter(prefix="/camera", tags=["Camera"])
 
+_CAIRO = ZoneInfo("Africa/Cairo")
+
 
 def _local_path(zone_id: int, instance: int) -> str:
     return f"latest_zone{zone_id}_cam{instance}.jpg"
@@ -36,7 +39,7 @@ def _local_path(zone_id: int, instance: int) -> str:
 async def upload_image(zone_id: int, instance: int, image: UploadFile = File(...)):
     """Accept a JPEG from the ESP32-CAM for the given zone and camera instance."""
     contents  = await image.read()
-    ts        = datetime.now(timezone.utc)
+    ts        = datetime.now(_CAIRO)
     local_path = _local_path(zone_id, instance)
 
     with open(local_path, "wb") as f:
