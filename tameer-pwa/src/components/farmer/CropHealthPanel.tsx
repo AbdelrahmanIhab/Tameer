@@ -8,7 +8,7 @@ interface Props { snapshot: LatestSnapshot | undefined }
 export default function CropHealthPanel({ snapshot }: Props) {
   const { t } = useTranslation();
   const [bust] = useState(() => Date.now());
-  const imageUrl = snapshot?.image_url ?? getCameraImageUrl(bust);
+  const imageUrl = snapshot?.image_url ?? getCameraImageUrl(1, 1, bust);
   const health = snapshot?.health_status;
   const confidence = snapshot?.confidence;
   const isHealthy = !health || health.toLowerCase() === 'healthy';

@@ -238,7 +238,7 @@ def query_latest_soil(zone_id: int | None = None) -> list[dict]:
     filter_clause = f'|> filter(fn: (r) => r["zone_id"] == "{zone_id}")' if zone_id is not None else ""
     flux = f"""
 from(bucket: "{_BUCKET}")
-  |> range(start: -1h)
+  |> range(start: -24h)
   |> filter(fn: (r) => r["_measurement"] == "soil_readings")
   {filter_clause}
   |> last()
@@ -251,7 +251,7 @@ def query_latest_air(zone_id: int | None = None) -> list[dict]:
     filter_clause = f'|> filter(fn: (r) => r["zone_id"] == "{zone_id}")' if zone_id is not None else ""
     flux = f"""
 from(bucket: "{_BUCKET}")
-  |> range(start: -1h)
+  |> range(start: -24h)
   |> filter(fn: (r) => r["_measurement"] == "air_readings")
   {filter_clause}
   |> last()
@@ -288,7 +288,7 @@ def query_latest_irrigation(zone_id: int | None = None) -> list[dict]:
     filter_clause = f'|> filter(fn: (r) => r["zone_id"] == "{zone_id}")' if zone_id is not None else ""
     flux = f"""
 from(bucket: "{_BUCKET}")
-  |> range(start: -1h)
+  |> range(start: -24h)
   |> filter(fn: (r) => r["_measurement"] == "irrigation")
   {filter_clause}
   |> last()

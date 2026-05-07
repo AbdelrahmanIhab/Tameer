@@ -22,10 +22,22 @@ class ManualCommandRequest(BaseModel):
     action: Literal["on", "off"]
 
 
+def _format_event(row: dict) -> dict:
+    t = row.get("_time", "")
+    return {
+        "timestamp":      t.isoformat() if hasattr(t, "isoformat") else str(t),
+        "zone_id":        int(row.get("zone_id", 0)),
+        "actuator":       row.get("actuator", ""),
+        "action":         row.get("action", ""),
+        "trigger_reason": row.get("trigger_reason", ""),
+    }
+
+
 @router.get("/events")
 async def get_automation_events(hours: int = 24):
     """Return the automation event log."""
-    events = influx_service.query_automation_events(hours=hours)
+    raw = influx_service.query_automation_events(hours=hours)
+    events = [_format_event(r) for r in raw]
     return {"status": "ok", "count": len(events), "events": events}
 
 
