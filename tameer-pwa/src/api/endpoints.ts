@@ -1,22 +1,22 @@
 import client from './client';
 import type {
   LatestSnapshot,
-  SoilReadingsResponse,
-  AirReadingsResponse,
+  ZoneSoilResponse,
+  ZoneAirResponse,
   HistoryResponse,
   AutomationEventsResponse,
   ManualCommandRequest,
   PlantHealthResult,
 } from '../types/api';
 
-export const fetchLatestSnapshot = () =>
-  client.get<LatestSnapshot>('/sensors/latest').then(r => r.data);
+export const fetchLatestSnapshot = (zoneId = 1) =>
+  client.get<LatestSnapshot>('/sensors/latest', { params: { zone_id: zoneId } }).then(r => r.data);
 
-export const fetchSoilReadings = () =>
-  client.get<SoilReadingsResponse>('/sensors/soil/latest').then(r => r.data);
+export const fetchSoilReadings = (zoneId: number) =>
+  client.get<ZoneSoilResponse>(`/sensors/soil/latest/${zoneId}`).then(r => r.data);
 
-export const fetchAirReadings = () =>
-  client.get<AirReadingsResponse>('/sensors/air/latest').then(r => r.data);
+export const fetchAirReadings = (zoneId: number) =>
+  client.get<ZoneAirResponse>(`/sensors/air/latest/${zoneId}`).then(r => r.data);
 
 export const fetchHistory = (zoneId: number, measurement: string, hours: number) =>
   client

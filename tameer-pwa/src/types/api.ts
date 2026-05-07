@@ -74,3 +74,15 @@ export interface PlantHealthResult {
 }
 
 export type ActuatorName = 'irrigation_valve';
+
+export interface ZoneSoilResponse {
+  status: string;
+  zone_id: number;
+  data: SoilReading;
+}
+
+export interface ZoneAirResponse {
+  status: string;
+  zone_id: number;
+  data: AirReading;
+}
