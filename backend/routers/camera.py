@@ -9,6 +9,7 @@ GET  /camera/debug                                    — last 20 raw InfluxDB r
 """
 
 import logging
+import math
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -211,11 +212,17 @@ async def analyze_image(image: UploadFile = File(...)):
     filename = image.filename or "upload.jpg"
     try:
         result = await ml_service.diagnose(image_bytes=contents, filename=filename)
+        disease    = result["state"]
+        confidence = float(result.get("confidence") or 0.0)
+        if math.isnan(confidence):
+            confidence = 0.0
+        health_score = 1.0 if disease == "healthy" else max(0.0, 1.0 - confidence)
         return {
-            "disease_class": result["state"],
+            "disease_class": disease,
             "disease_id":    result["state_id"],
-            "confidence":    result["confidence"],
-            "vision_probs":  result["vision_probs"],
+            "confidence":    confidence,
+            "health_score":  health_score,
+            "vision_probs":  result.get("vision_probs", []),
             "stub":          False,
         }
     except Exception as exc:
