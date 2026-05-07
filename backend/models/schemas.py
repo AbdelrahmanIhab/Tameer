@@ -85,3 +85,24 @@ class AutomationEvent(BaseModel):
     action:         str
     trigger_reason: str
     zone_id:        int
+
+
+# ── ML service response schemas ───────────────────────────────────────────────
+
+class DiagnoseResponse(BaseModel):
+    """Response from TameerML POST /diagnose (vision-only)."""
+    state:        str
+    state_id:     int
+    confidence:   float
+    vision_probs: dict[str, float]   # {"pest": 0.01, "fungal": 0.95, ...}
+
+
+class PredictResponse(BaseModel):
+    """Response from TameerML POST /predict (full fusion pipeline)."""
+    action:        str
+    action_id:     int
+    action_probs:  list[float]       # [do_nothing, irrigate, fungicide, pesticide]
+    irrigation_ml: int
+    disease:       str
+    disease_id:    int
+    vision_probs:  list[float]       # [pest, fungal, healthy, drought, overwatered]

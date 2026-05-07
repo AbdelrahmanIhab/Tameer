@@ -202,6 +202,36 @@ def write_camera_data(
         _dbg(trace_id, zone_id, "camera", cam_instance, "camera_data", "error", exc)
 
 
+def write_plant_health(
+    zone_id: int,
+    cam_instance: int,
+    disease_class: str,
+    confidence: float,
+    health_score: float,
+    timestamp: datetime | None = None,
+    trace_id: str = "",
+) -> None:
+    ts = timestamp or datetime.now(_CAIRO)
+    point = (
+        Point("plant_health")
+        .tag("zone_id",       str(zone_id))
+        .tag("node_type",     "camera")
+        .tag("node_instance", str(cam_instance))
+        .field("disease_class", disease_class)
+        .field("confidence",    float(confidence))
+        .field("health_score",  float(health_score))
+        .time(ts, WritePrecision.S)
+    )
+    try:
+        _write_api.write(bucket=_BUCKET, record=point)
+        log.debug("Wrote plant_health zone=%s instance=%s: %s (%.2f)",
+                  zone_id, cam_instance, disease_class, confidence)
+        _dbg(trace_id, zone_id, "camera", cam_instance, "plant_health", "ok")
+    except Exception as exc:
+        log.error("InfluxDB write failed (plant_health): %s", exc)
+        _dbg(trace_id, zone_id, "camera", cam_instance, "plant_health", "error", exc)
+
+
 # ── Reads ─────────────────────────────────────────────────────────────────────
 
 def query_latest_soil(zone_id: int | None = None) -> list[dict]:
