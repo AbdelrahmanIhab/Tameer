@@ -31,14 +31,17 @@ This is a senior thesis project at AUC (American University in Cairo).
 - MQTT subscriber + publisher (`backend/services/mqtt_service.py`)
 - InfluxDB reads/writes (`backend/services/influx_service.py`)
 - Automation decision engine (`backend/services/automation.py`)
-- REST API endpoints for sensors and automation (`backend/routers/`)
+- REST API endpoints for sensors, automation, and camera (`backend/routers/`)
 - Pydantic validation models (`backend/models/schemas.py`)
+- Developer debug dashboard + SSE event stream (`backend/routers/debug.py`)
+- React + Vite PWA dashboard — farmer view + engineer view (`tameer-pwa/`)
+- Backend deployed on Railway (Procfile + runtime.txt)
+- Frontend PWA deployed on Railway (`tameer-pwa/railway.json`)
 
 ### 🔄 In progress (Thesis 2 — hardware integration)
 - Real ESP32 nodes connected (replacing simulator)
 
 ### ⏳ Not yet started
-- React + Vite PWA dashboard (farmer view + engineer view)
 - Random Forest ML model training (needs real sensor data)
 - EfficientNetB0 inference endpoint integration
 - ESP32 firmware refinement (Arduino/PlatformIO)
@@ -62,6 +65,8 @@ All soil + weather nodes form a single ESP-NOW mesh (channel 11, broadcast). One
 tameer/
 ├── CLAUDE.md                        ← you are here
 ├── README.md                        ← human-readable setup guide
+├── Procfile                         ← Railway backend start command
+├── runtime.txt                      ← Python 3.12 pin for Railway
 ├── .env                             ← credentials (never commit)
 ├── .gitignore
 ├── requirements.txt
@@ -72,22 +77,40 @@ tameer/
 │   └── CamNode/CamNode.ino         ← ZONE_ID + CAM_INSTANCE defines at top
 ├── scripts/
 │   └── purge_simulator_data.py      ← one-time InfluxDB cleanup (already run)
-└── backend/
-    ├── __init__.py
-    ├── main.py                      ← FastAPI entry point
-    ├── models/
-    │   ├── __init__.py
-    │   └── schemas.py               ← Pydantic payload validation models
-    ├── services/
-    │   ├── __init__.py
-    │   ├── mqtt_service.py          ← MQTT subscriber + command publisher
-    │   ├── influx_service.py        ← InfluxDB reads and writes
-    │   └── automation.py            ← decision engine (thresholds → commands)
-    └── routers/
-        ├── __init__.py
-        ├── sensors.py               ← REST endpoints for sensor data
-        ├── automation.py            ← REST endpoints for events + manual override
-        └── camera.py               ← image upload + serve endpoints
+├── backend/
+│   ├── __init__.py
+│   ├── main.py                      ← FastAPI entry point
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── schemas.py               ← Pydantic payload validation models
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── mqtt_service.py          ← MQTT subscriber + command publisher
+│   │   ├── influx_service.py        ← InfluxDB reads and writes
+│   │   ├── automation.py            ← decision engine (thresholds → commands)
+│   │   └── debug_bus.py             ← in-memory SSE event bus for debug dashboard
+│   └── routers/
+│       ├── __init__.py
+│       ├── sensors.py               ← REST endpoints for sensor data
+│       ├── automation.py            ← REST endpoints for events + manual override
+│       ├── camera.py               ← image upload + serve endpoints
+│       └── debug.py                ← developer debug dashboard (HTML + SSE stream)
+└── tameer-pwa/                      ← React + Vite PWA (deployed separately on Railway)
+    ├── railway.json                 ← Railway frontend build + serve config
+    ├── vite.config.ts
+    ├── src/
+    │   ├── pages/
+    │   │   ├── FarmerView.tsx       ← simplified farmer dashboard
+    │   │   └── EngineerView.tsx     ← detailed engineer dashboard
+    │   ├── components/
+    │   │   ├── farmer/              ← farmer-specific cards and panels
+    │   │   ├── engineer/            ← charts, readings, actuator controls
+    │   │   └── shared/              ← LanguageToggle, TabBar, ErrorBanner
+    │   ├── hooks/                   ← React Query data-fetching hooks
+    │   ├── api/                     ← axios client + typed endpoint helpers
+    │   ├── i18n/                    ← Arabic + English translation JSON
+    │   └── types/api.ts             ← TypeScript types matching backend schemas
+    └── dist/                        ← production build output
 ```
 
 ---
@@ -103,7 +126,8 @@ tameer/
 | Database | InfluxDB Cloud | Time-series, 4 measurements |
 | Visual ML | EfficientNetB0 | Trained, not yet integrated into backend |
 | Numerical ML | Random Forest | Architecture defined, training pending data |
-| Frontend | React + Vite + PWA | Not yet built |
+| Frontend | React + Vite + PWA | Built and deployed on Railway; uses React Query, Recharts, i18next, Tailwind |
+| Deployment | Railway | Backend (Procfile/Python 3.12) + Frontend (nixpacks + serve) as separate services |
 
 ---
 
@@ -187,7 +211,7 @@ Commands are routed per zone: `smartplant/zone/{zone_id}/actuator/cmd`.
 ## How to run
 
 ```bash
-# Install dependencies (inside venv)
+# Backend — install dependencies (inside venv)
 pip install -r requirements.txt
 
 # Start the backend
@@ -195,13 +219,23 @@ uvicorn backend.main:app --reload
 
 # API docs (once backend is running)
 open http://localhost:8000/docs
+
+# Debug dashboard (live SSE event stream)
+open http://localhost:8000/debug
+
+# Frontend PWA — from tameer-pwa/
+npm install
+npm run dev          # dev server (http://localhost:5173)
+npm run build        # production build → dist/
 ```
+
+The PWA reads `VITE_API_URL` from `tameer-pwa/.env` to point at the backend.
 
 ---
 
 ## Coding conventions
 
-- Python 3.11+
+- Python 3.12 (production runtime pinned in `runtime.txt`)
 - All env vars read via `os.getenv()` after `load_dotenv()`
 - Pydantic v2 for all data models (`model_dump()` not `.dict()`)
 - `snake_case` for all variable and function names
