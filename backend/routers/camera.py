@@ -3,6 +3,7 @@ Tameer — Camera Router
 =======================
 POST /camera/upload/zone/{zone_id}/camera/{instance}  — ESP32-CAM pushes a JPEG
 GET  /camera/zone/{zone_id}/camera/{instance}/latest.jpg — serve most recent image
+POST /camera/analyze                                  — manual plant photo → CV stub
 GET  /camera/debug                                    — last 20 raw InfluxDB records
 """
 
@@ -85,6 +86,21 @@ def latest_image(zone_id: int, instance: int):
         f"<h2>No image uploaded yet for zone {zone_id} camera {instance}</h2>",
         status_code=404,
     )
+
+
+@router.post("/analyze")
+async def analyze_image(image: UploadFile = File(...)):
+    """
+    Analyze an uploaded plant photo for disease and health.
+    Stub response — wire to EfficientNetB0 inference when ready.
+    """
+    # TODO: pass image bytes to CV model and return real predictions
+    return {
+        "disease_class": "pending",
+        "confidence":    0.0,
+        "health_score":  1.0,
+        "stub":          True,
+    }
 
 
 @router.get("/debug")

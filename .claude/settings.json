@@ -20,7 +20,10 @@
       "Bash(python3 -c \"from PIL import Image\")",
       "Bash(python3 -c \"import cairosvg; print\\('cairosvg ok'\\)\")",
       "Bash(python3 -c \"from PIL import Image; print\\('PIL ok'\\)\")",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(xargs ls -la)",
+      "Bash(xargs ls -1)"
     ],
     "additionalDirectories": [
       "/home/abdelrahman/tameer-mobile"

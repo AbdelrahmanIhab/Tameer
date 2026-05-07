@@ -3,6 +3,7 @@ import TabBar from './components/shared/TabBar';
 import LanguageToggle from './components/shared/LanguageToggle';
 import FarmerView from './pages/FarmerView';
 import EngineerView from './pages/EngineerView';
+import PlantHealthView from './pages/PlantHealthView';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<FarmerView />} />
           <Route path="/engineer" element={<EngineerView />} />
+          <Route path="/plant-health" element={<PlantHealthView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

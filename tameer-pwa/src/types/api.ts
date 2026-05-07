@@ -1,37 +1,30 @@
 export interface SoilReading {
-  node_id: string;
+  zone_id: string;
+  node_instance: string;
   moisture: number;
   soil_temp: number;
-  ec: number;
-  ph: number;
-  nitrogen: number;
-  phosphorus: number;
-  potassium: number;
   dryness_level: 'wet' | 'moderate' | 'dry';
   _time: string;
 }
 
 export interface AirReading {
-  node_id: string;
+  zone_id: string;
+  node_instance: string;
   air_temp: number;
   air_humidity: number;
-  pressure: number;
   light: number;
-  rain: number;
-  wind_speed: number;
-  wind_direction: number;
-  uv_index: number;
   air_quality: number;
   _time: string;
 }
 
 export interface LatestSnapshot {
-  timestamp: string;
+  timestamp: string | null;
   soil: SoilReading | null;
   weather: AirReading | null;
   image_url: string | null;
   health_status: string | null;
   confidence: number | null;
+  irrigation_minutes: number | null;
 }
 
 export interface AutomationEvent {
@@ -39,7 +32,7 @@ export interface AutomationEvent {
   actuator: string;
   action: string;
   trigger_reason: string;
-  node_id: number;
+  zone_id: number;
 }
 
 export interface AutomationEventsResponse {
@@ -60,24 +53,24 @@ export interface AirReadingsResponse {
 
 export interface HistoryResponse {
   status: string;
-  node_id: number;
+  zone_id: number;
   measurement: string;
   hours: number;
   count: number;
-  data: (SoilReading & AirReading)[];
+  data: (SoilReading | AirReading)[];
 }
 
 export interface ManualCommandRequest {
   target_node: number;
-  actuator: string;
+  actuator: 'irrigation_valve';
   action: 'on' | 'off';
 }
 
-export type ActuatorName =
-  | 'irrigation_valve'
-  | 'fertilizer_pump'
-  | 'fan'
-  | 'heater'
-  | 'grow_light'
-  | 'shade'
-  | 'spray_nozzle';
+export interface PlantHealthResult {
+  disease_class: string;
+  confidence: number;
+  health_score: number;
+  stub?: boolean;
+}
+
+export type ActuatorName = 'irrigation_valve';

@@ -18,13 +18,15 @@ export default function KeyMetricsRow({ snapshot }: Props) {
 
   const m = snapshot.soil?.moisture;
   const moistureColor = m == null ? 'text-gray-400' : m < 40 ? 'text-red-600' : m > 85 ? 'text-blue-600' : 'text-primary';
+  const irrMin = snapshot.irrigation_minutes;
+  const irrValue = irrMin != null ? `${irrMin} min` : '--';
 
   return (
     <div className="flex gap-3">
       <Box label={t('farmer.moisture')} value={m != null ? `${m.toFixed(0)}%` : '--'} color={moistureColor} />
       <Box label={t('farmer.airTemp')} value={snapshot.weather?.air_temp != null ? `${snapshot.weather.air_temp.toFixed(1)}°C` : '--'} />
-      <Box label={t('farmer.rain')} value={snapshot.weather?.rain === 1 ? '🌧' : '☀️'} />
-      <Box label={t('farmer.lastAction')} value={snapshot.soil?.dryness_level ?? '--'} />
+      <Box label={t('farmer.irrigationMinutes')} value={irrValue} />
+      <Box label={t('farmer.dryness')} value={snapshot.soil?.dryness_level ?? '--'} />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 export default function TabBar() {
   const { t } = useTranslation();
-  const base = 'px-4 py-1 rounded-full text-sm font-semibold transition-colors';
+  const base = 'px-3 py-1 rounded-full text-sm font-semibold transition-colors';
   const active = 'bg-white text-primary';
   const inactive = 'text-white/80 hover:text-white';
 
@@ -14,6 +14,9 @@ export default function TabBar() {
       </NavLink>
       <NavLink to="/engineer" className={({ isActive }) => `${base} ${isActive ? active : inactive}`}>
         📊 {t('tabs.engineer')}
+      </NavLink>
+      <NavLink to="/plant-health" className={({ isActive }) => `${base} ${isActive ? active : inactive}`}>
+        🔬 {t('tabs.plantHealth')}
       </NavLink>
     </nav>
   );

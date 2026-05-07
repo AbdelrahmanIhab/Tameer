@@ -20,11 +20,6 @@ export default function SoilReadingsCard({ soil }: Props) {
       <h2 className="font-bold text-primary mb-3">{t('engineer.soilReadings')}</h2>
       <Row label={t('engineer.moisture')} value={`${soil.moisture?.toFixed(1)} %`} />
       <Row label={t('engineer.soilTemp')} value={`${soil.soil_temp?.toFixed(1)} °C`} />
-      <Row label={t('engineer.ec')} value={`${soil.ec?.toFixed(2)} mS/cm`} />
-      <Row label={t('engineer.ph')} value={`${soil.ph?.toFixed(1)}`} />
-      <Row label={t('engineer.nitrogen')} value={`${soil.nitrogen?.toFixed(0)} mg/kg`} />
-      <Row label={t('engineer.phosphorus')} value={`${soil.phosphorus?.toFixed(0)} mg/kg`} />
-      <Row label={t('engineer.potassium')} value={`${soil.potassium?.toFixed(0)} mg/kg`} />
       <Row label={t('engineer.dryness')} value={soil.dryness_level ?? '-'} />
     </div>
   );

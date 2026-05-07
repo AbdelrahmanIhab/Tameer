@@ -8,6 +8,7 @@ import AirReadingsCard from '../components/engineer/AirReadingsCard';
 import MoistureChart from '../components/engineer/MoistureChart';
 import AutomationEventLog from '../components/engineer/AutomationEventLog';
 import ActuatorControls from '../components/engineer/ActuatorControls';
+import RecommendationsPanel from '../components/shared/RecommendationsPanel';
 import ErrorBanner from '../components/shared/ErrorBanner';
 
 export default function EngineerView() {
@@ -30,6 +31,7 @@ export default function EngineerView() {
         <>
           <SoilReadingsCard soil={soil} />
           <AirReadingsCard air={air} />
+          <RecommendationsPanel air={air} />
           <MoistureChart history={historyData?.data ?? []} />
           <ActuatorControls events={eventsData?.events ?? []} />
           <AutomationEventLog events={eventsData?.events ?? []} />

@@ -4,8 +4,8 @@ import { useAutomationEvents } from '../hooks/useAutomationEvents';
 import KeyMetricsRow from '../components/farmer/KeyMetricsRow';
 import ActuatorStatusGrid from '../components/farmer/ActuatorStatusGrid';
 import CropHealthPanel from '../components/farmer/CropHealthPanel';
-import ManualUploadButton from '../components/farmer/ManualUploadButton';
 import AutomationAlert from '../components/farmer/AutomationAlert';
+import RecommendationsPanel from '../components/shared/RecommendationsPanel';
 import ErrorBanner from '../components/shared/ErrorBanner';
 
 export default function FarmerView() {
@@ -24,8 +24,8 @@ export default function FarmerView() {
         <>
           <KeyMetricsRow snapshot={snapshot} />
           <ActuatorStatusGrid events={eventsData?.events ?? []} />
+          <RecommendationsPanel air={snapshot?.weather ?? undefined} />
           <CropHealthPanel snapshot={snapshot} />
-          <ManualUploadButton />
         </>
       )}
     </div>

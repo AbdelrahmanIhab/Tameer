@@ -12,7 +12,7 @@ export default function AutomationEventLog({ events }: Props) {
         <p className="text-gray-400 text-sm text-center py-4">No events in last 24h</p>
       ) : (
         <ul className="space-y-2 max-h-64 overflow-y-auto">
-          {events.slice(0, 30).map((e, i) => {
+          {events.slice().reverse().slice(0, 30).map((e, i) => {
             const isOn = e.action === 'on' || e.action === 'irrigate';
             return (
               <li key={i} className="border-b border-gray-100 pb-2 last:border-0">
