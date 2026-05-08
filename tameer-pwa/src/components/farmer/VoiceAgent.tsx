@@ -69,7 +69,7 @@ export default function VoiceAgent({ zoneId }: Props) {
       setShowCard(true);
     };
 
-    rec.onresult = async (e) => {
+    rec.onresult = async (e: SpeechRecognitionEvent) => {
       const transcript = e.results[0][0].transcript;
       setQuestion(transcript);
       setAnswer('');
