@@ -9,7 +9,17 @@
     "cropHealth": "Crop Health",
     "healthy": "Healthy",
     "noImage": "No image yet",
-    "automationFired": "Automation triggered"
+    "automationFired": "Automation triggered",
+    "voice": {
+      "tapToSpeak": "Tap to speak",
+      "listening": "Listening...",
+      "processing": "Processing...",
+      "speaking": "Speaking...",
+      "errorMic": "Microphone access denied",
+      "errorApi": "Something went wrong, please try again",
+      "errorLang": "Arabic speech recognition not supported in this browser",
+      "noSpeech": "No speech detected, please try again"
+    }
   },
   "engineer": {
     "title": "Engineer View",

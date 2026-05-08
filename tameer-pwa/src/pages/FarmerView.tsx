@@ -8,6 +8,7 @@ import CropHealthPanel from '../components/farmer/CropHealthPanel';
 import AutomationAlert from '../components/farmer/AutomationAlert';
 import RecommendationsPanel from '../components/shared/RecommendationsPanel';
 import ErrorBanner from '../components/shared/ErrorBanner';
+import VoiceAgent from '../components/farmer/VoiceAgent';
 
 const ZONES = [1, 2];
 
@@ -49,6 +50,7 @@ export default function FarmerView() {
           <CropHealthPanel snapshot={snapshot} />
         </>
       )}
+      <VoiceAgent zoneId={zoneId} />
     </div>
   );
 }
